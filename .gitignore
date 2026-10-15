@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store
+apps/agent/data/
+apps/agent/agent.yaml
+coverage/
+worker-configuration.d.ts.bak
+apps/agent/fixtures/demo/

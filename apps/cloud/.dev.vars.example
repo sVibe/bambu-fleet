@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development (never deploy these).
+# Requests to localhost are signed in as this user instead of using Cloudflare Access.
+DEV_AUTH_EMAIL=you@example.com
+BOOTSTRAP_ADMIN_EMAIL=you@example.com

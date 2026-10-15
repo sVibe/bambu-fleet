@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bambu-fleet",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    // Serve the React app for unknown paths; /api and /ingest always reach the Worker.
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ingest/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bambu-fleet",
+      // Replace with the id from `wrangler d1 create bambu-fleet` before deploying.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "bambu-fleet-files" }],
+  "durable_objects": {
+    "bindings": [{ "name": "FLEET_LIVE", "class_name": "FleetLive" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FleetLive"] }],
+  "vars": {
+    // Cloudflare Access: Zero Trust → Access → Applications → this app's "Application Audience (AUD) Tag".
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+    "BOOTSTRAP_ADMIN_EMAIL": "",
+    "DEFAULT_ROLE": "viewer"
+  },
+  "observability": { "enabled": true }
+}

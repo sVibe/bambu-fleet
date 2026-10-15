@@ -1,0 +1,10 @@
+# Run on an always-on machine on the printers' network:  docker compose up -d
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: apps/agent/Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./agent.yaml:/config/agent.yaml:ro
+      - ./data:/data

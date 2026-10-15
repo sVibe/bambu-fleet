@@ -1,0 +1,35 @@
+# Copy to agent.yaml and fill in. This file holds printer access codes: keep it on the LAN machine.
+
+cloud:
+  # Dashboard URL (the Cloudflare Worker hostname).
+  url: https://fleet.example.com
+  # Created in the dashboard under Admin → Agents (shown once).
+  agentKey: "paste-agent-key-here"
+  # Only if /ingest/* sits behind Cloudflare Access: a service token for this agent.
+  # accessClientId: "xxxx.access"
+  # accessClientSecret: "xxxx"
+
+# Local state (outbox, jobs in progress). Relative to this file; Docker uses /data instead.
+dataDir: ./data
+
+printers:
+  # Serial, IP and LAN access code are on the printer screen (Settings → Network / Device).
+  # Printers stay in normal cloud mode; do NOT enable LAN-only or Developer Mode.
+  - serial: 01P00A000000001
+    name: P1S-01
+    host: 192.168.1.50
+    accessCode: "12345678"
+    model: P1S
+
+mqtt:
+  # Minimum seconds between full-state requests per printer.
+  pushallIntervalSec: 300
+
+ftps:
+  # Download each job's .gcode.3mf for per-part grams. Needs an SD card/USB stick in the printer and,
+  # on newer firmware, "Store sent files on external storage" enabled.
+  enabled: true
+  searchDirs: ["/", "/cache", "/model"]
+
+# Seconds between live-state pushes to the dashboard.
+liveIntervalSec: 3

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cloud",
+      "runtimeExecutable": "corepack",
+      "runtimeArgs": ["pnpm", "--filter", "@fleet/cloud", "dev", "--port", "5173", "--strictPort"],
+      "port": 5173
+    }
+  ]
+}

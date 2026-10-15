@@ -1,0 +1,22 @@
+{
+  "name": "@fleet/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LAN agent: reads Bambu printers over local MQTT/FTPS and forwards jobs and live state to the cloud dashboard.",
+  "scripts": {
+    "start": "node src/main.ts run",
+    "replay:demo": "node scripts/make-demo-fixtures.ts && node src/main.ts replay fixtures/demo/session.jsonl --files fixtures/demo/files",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fleet/shared": "workspace:*",
+    "@fleet/threemf": "workspace:*",
+    "basic-ftp": "5.3.1",
+    "mqtt": "5.16.1",
+    "ulidx": "2.4.1",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
+  }
+}

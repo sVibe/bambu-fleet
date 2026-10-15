@@ -1,0 +1,19 @@
+{
+  "name": "@fleet/threemf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fleet/shared": "workspace:*",
+    "fast-xml-parser": "5.11.2",
+    "fflate": "0.8.3"
+  }
+}
