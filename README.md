@@ -19,7 +19,7 @@ Printers (cloud mode) ──MQTT 8883 (read) / FTPS 990 (read)──▶ LAN agen
 | `packages/shared` | Types and zod schemas shared by agent and cloud (ingest API, live state, roles) |
 | `packages/threemf` | Streaming `.gcode.3mf` parser: filament per plate and **grams per object** from G-code labels |
 | `apps/agent` | LAN agent: reads each printer's local MQTT, tracks jobs, fetches the job 3MF over FTPS, forwards events |
-| `apps/cloud` | Cloudflare Worker API + React dashboard (Fleet, History, Job, Parts, Materials, Admin) |
+| `apps/cloud` | Cloudflare Worker API + React dashboard (Fleet, Queue, History, Job, Parts, Materials, Admin) |
 
 ## Why it works this way
 
@@ -60,6 +60,10 @@ cancelled job. Use the port Vite prints:
 cd apps/agent && node scripts/make-demo-fixtures.ts && node src/main.ts replay fixtures/demo/session.jsonl --files fixtures/demo/files --cloud http://localhost:5173 --key dev-agent-key-0123456789
 ```
 
+To try the queue, open **Queue**, upload `apps/agent/fixtures/demo/files/Bracket set.gcode.3mf` and dispatch it to
+P1S-01. Then run the same replay command again: P1S-01 starts a job named "Bracket set", and the item moves to
+printing and then to done. Add `--speed 20` to the replay to make it quicker.
+
 ## Deploy the cloud side (Cloudflare)
 
 1. **Create the database and bucket:**
@@ -82,7 +86,7 @@ Roles:
 | Role | Can do |
 |---|---|
 | Viewer | Sees everything |
-| Operator | Also renames and merges parts (and will dispatch jobs) |
+| Operator | Also renames and merges parts, and uploads, queues and dispatches jobs |
 | Admin | Also manages people and agents; every change is in the audit log |
 
 ## Run the agent next to the printers
@@ -136,13 +140,51 @@ of each model before relying on the numbers:
    to Studio's estimate, and the part names should match the plate. This confirms the G-code `unique label id`
    equals `slice_info` `identify_id`.
 4. **Check the cloud apps.** Handy still shows and controls the printer throughout.
+5. **Check the queue match.** Dispatch a queued file and start it from Bambu Connect.
+   - The job name the printer reports should match the file name, so the queue item moves to printing.
+   - The file's `printer_model_id` should map to the printer's model, not to "check manually".
+
+## Assisted job queue
+
+The **Queue** page plans prints across the fleet. Starting each print stays a human step in Bambu Connect.
+
+1. **Upload.** An operator uploads a sliced `.gcode.3mf` (in Bambu Studio: File → Export → Export plate sliced
+   file).
+   - The browser parses it with `packages/threemf` in a Web Worker and shows each plate's filaments, parts, grams,
+     time and `printer_model_id`.
+   - In the same pass it computes the file's MD5. Web Crypto has no MD5, so `packages/shared` has a small one.
+   - The file is stored in R2 as `queue/<md5>.gcode.3mf`. R2 checks the MD5 on upload, and a file that's already
+     stored isn't sent again.
+   - Uploads are limited to 100 MB, the Workers request-body limit on the Free and Pro plans.
+2. **Queue.** Each selected plate becomes a queue item with a title, number of copies and priority.
+3. **Match.** Every open item ranks the printers using the live state from the FleetLive Durable Object:
+   - **Model:** the 3MF's `printer_model_id` is compared with the printer's model. The mapping table is in
+     `packages/shared/src/queue.ts`. An id or model that isn't in the table shows as "check manually".
+   - **Materials:** each filament needs a loaded AMS tray (or external spool) of the same material. The closest
+     colour wins, and the suggested slot mapping (A1–A4, B1…, Ext) is shown so it can be picked in Bambu Connect.
+   - **State:** IDLE is ready. FINISH or FAILED means the bed has to be cleared first. A printer that's busy or
+     already has an item dispatched to it is marked busy, and an offline printer is unsuitable.
+4. **Dispatch.** *Dispatch* records the hand-off and downloads the file.
+   - The page also offers a `bambu-connect://import-file?path=…&name=…&version=1.0.0` link.
+   - Bambu Connect only imports from a **local file path**, which a web page can't know. The link is therefore built
+     from the downloads folder the operator types in once (it's kept in the browser).
+   - Without that folder, the fallback is: **download, then open the file in Bambu Connect or Bambu Studio**.
+   - Printers stay in cloud mode, so third-party software can't start prints. The dashboard never sends MQTT print
+     commands.
+5. **Reconcile.** When the agent reports `job.started` on the item's printer, the cloud links the job to the
+   dispatched item.
+   - It matches when the job name equals the item's file name or title (case-insensitive, without `.gcode.3mf`)
+     and the job started within 2 hours of dispatch.
+   - The item moves to printing. On `job.ended` it moves to done, or to failed if the job failed or was cancelled.
+   - With more than one copy, a finished run puts the item back in the queue until all copies are printed.
+   - Items that never link (for example, after the job was renamed in Studio) can be requeued or cancelled.
+
+Everyone can see the queue. Uploading, queueing, dispatching and downloading files need the operator role, and each
+change is written to the audit log.
 
 ## Not built yet
 
 - **Cloud backfill (Phase 3).** Opt-in import of past jobs from Bambu's unofficial cloud task API. It is
   read-only, uses an honest User-Agent and is off by default, because of terms-of-service risk.
-- **Assisted job queue (Phase 4).**
-  - Upload a 3MF and parse it in the browser with `packages/threemf`.
-  - Match jobs to printers by model and loaded AMS material.
-  - An operator dispatches each one with one click through Bambu Connect.
-  - The agent interfaces (`PrinterSource`, job file fetchers) leave room for a Fleet Hub "production cell" later.
+- **Fleet Hub "production cell".** The agent interfaces (`PrinterSource`, job file fetchers) leave room for
+  printers that are moved to Fleet Hub later, which could start queued jobs without a human step.

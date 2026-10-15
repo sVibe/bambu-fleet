@@ -57,7 +57,7 @@ function Users({ self }: { self: string }) {
       <div className="px-4 pt-4">
         <h2 className="font-semibold">People</h2>
         <p className="text-xs text-ink-2">
-          Viewers see everything; operators can also rename and merge parts (and later dispatch jobs); admins
+          Viewers see everything; operators can also rename and merge parts and run the job queue; admins
           manage people and agents. Sign-in itself is controlled by the Cloudflare Access policy.
         </p>
       </div>

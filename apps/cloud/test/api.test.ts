@@ -55,6 +55,8 @@ async function sampleAnalysis() {
 }
 
 const TABLES = [
+  "queue_items",
+  "files",
   "job_parts",
   "job_filaments",
   "jobs",

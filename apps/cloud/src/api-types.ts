@@ -1,4 +1,12 @@
-import type { AmsUnit, JobStatus, PrinterLiveState, Role } from "@fleet/shared";
+import type {
+  AmsUnit,
+  GcodeState,
+  JobStatus,
+  PrinterLiveState,
+  QueuePlate,
+  QueueStatus,
+  Role,
+} from "@fleet/shared";
 
 /** Response shapes of the dashboard API, shared by the Worker and the web app. */
 
@@ -172,6 +180,77 @@ export interface AuditRow {
   entity: string | null;
   entityId: string | null;
   details: string | null;
+}
+
+export interface QueueFile {
+  md5: string;
+  filename: string;
+  size: number;
+  printerModelId: string | null;
+  /** Model name for printerModelId, or null when the id is not in the mapping table. */
+  model: string | null;
+  plates: QueuePlate[];
+  uploadedBy: string;
+  uploadedAt: number;
+  downloadUrl: string;
+}
+
+/** How one slicer filament of a plate would be fed from the printer's loaded trays. */
+export interface SlotMapping {
+  filamentIdx: number;
+  material: string | null;
+  color: string | null;
+  usedG: number | null;
+  /** exact: material and colour match; colour: same material, different colour; missing: no tray has it. */
+  match: "exact" | "colour" | "missing";
+  tray: {
+    /** AMS unit id, or null for the external spool holder. */
+    amsId: number | null;
+    slotId: number;
+    /** Slot name as the printer and Bambu Connect show it: A1–A4, B1–B4…, or Ext. */
+    label: string;
+    material: string | null;
+    color: string | null;
+    remainPct: number | null;
+  } | null;
+}
+
+export type MatchVerdict = "ready" | "action" | "wait" | "unsuitable";
+export type PrinterReadiness = "ready" | "clear-bed" | "busy" | "offline" | "unknown";
+
+export interface PrinterSuggestion {
+  serial: string;
+  name: string;
+  model: string | null;
+  verdict: MatchVerdict;
+  /** 0–100, higher is a better fit; only used for ordering. */
+  score: number;
+  modelCheck: "match" | "mismatch" | "unknown";
+  readiness: PrinterReadiness;
+  gcodeState: GcodeState | null;
+  remainingMin: number | null;
+  slots: SlotMapping[];
+  issues: Array<{ level: "block" | "warn"; text: string }>;
+}
+
+export interface QueueItem {
+  id: string;
+  title: string;
+  plateIndex: number;
+  quantity: number;
+  completed: number;
+  priority: number;
+  status: QueueStatus;
+  file: Omit<QueueFile, "plates" | "uploadedBy" | "uploadedAt">;
+  plate: QueuePlate | null;
+  assignedPrinter: { serial: string; name: string } | null;
+  jobId: string | null;
+  dispatchedAt: number | null;
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  /** Ranked printers for items that still wait for one; empty otherwise. */
+  suggestions: PrinterSuggestion[];
 }
 
 /** Messages on the `/api/live` WebSocket. */

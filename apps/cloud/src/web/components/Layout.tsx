@@ -4,6 +4,7 @@ import { cx } from "./ui.tsx";
 
 const NAV = [
   { to: "/", label: "Fleet", end: true },
+  { to: "/queue", label: "Queue" },
   { to: "/history", label: "History" },
   { to: "/parts", label: "Parts" },
   { to: "/analytics", label: "Materials" },

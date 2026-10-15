@@ -6,6 +6,7 @@ import { ingest } from "./ingest.ts";
 import { admin } from "./routes/admin.ts";
 import { jobs } from "./routes/jobs.ts";
 import { parts } from "./routes/parts.ts";
+import { queue } from "./routes/queue.ts";
 import { stats } from "./routes/stats.ts";
 
 export { FleetLive } from "./live.ts";
@@ -27,6 +28,7 @@ api.get("/me", (c) => c.json(c.get("user") satisfies Me));
 api.route("/", jobs);
 api.route("/", parts);
 api.route("/", stats);
+api.route("/queue", queue);
 api.route("/admin", admin);
 api.all("*", (c) => c.json({ error: "Not found" }, 404));
 app.route("/api", api);

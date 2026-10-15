@@ -8,6 +8,7 @@ import type {
   PartDetail,
   PartListItem,
   PrinterSummary,
+  QueueItem,
   StatsResponse,
   UserRow,
 } from "../api-types.ts";
@@ -82,6 +83,14 @@ export const useStats = (from: number, bucket: string) =>
   useQuery({
     queryKey: ["stats", from, bucket],
     queryFn: () => api<StatsResponse>(`/api/stats${qs({ from, bucket })}`),
+  });
+
+export const useQueue = (view: "active" | "history") =>
+  useQuery({
+    queryKey: ["queue", view],
+    queryFn: () => api<QueueItem[]>(`/api/queue${qs({ view })}`),
+    // Suggestions follow live printer state, and items move on when printers report jobs.
+    refetchInterval: 10_000,
   });
 
 export const useUsers = () =>

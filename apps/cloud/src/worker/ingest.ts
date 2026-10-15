@@ -5,6 +5,7 @@ import {
   ingestBatchSchema,
   ingestStateSchema,
   type JobStatus,
+  normalizeJobName,
   normalizePartName,
 } from "@fleet/shared";
 import { plateIndexFromPath } from "@fleet/threemf";
@@ -96,10 +97,10 @@ export async function applyEvent(
       );
       break;
     case "job.started":
-      statements.push(jobStarted(db, event, now));
+      statements.push(jobStarted(db, event, now), ...(await linkQueueItem(db, event, now)));
       break;
     case "job.ended":
-      statements.push(...(await jobEnded(db, event, now)));
+      statements.push(...(await jobEnded(db, event, now)), ...(await finishQueueItem(db, event, now)));
       break;
     case "job.analysis":
       statements.push(...(await jobAnalysis(env, event, now)));
@@ -135,6 +136,79 @@ function jobStarted(db: D1Database, e: IngestEventOf<"job.started">, now: number
       now,
       now,
     );
+}
+
+/** A dispatched queue item is linked to a job that starts on its printer within this time after dispatch. */
+export const RECONCILE_WINDOW_MS = 2 * 60 * 60 * 1000;
+/** Allowance for the agent's clock running behind the Worker's. */
+const CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * Link a started job to the queue item that was dispatched to the same printer under the same name
+ * (case-insensitive, without `.gcode.3mf`), oldest dispatch first, and mark the item printing.
+ */
+async function linkQueueItem(
+  db: D1Database,
+  e: IngestEventOf<"job.started">,
+  now: number,
+): Promise<D1PreparedStatement[]> {
+  const name = normalizeJobName(e.name);
+  if (!name) return [];
+  const linked = await db.prepare("SELECT 1 FROM queue_items WHERE job_id = ?").bind(e.jobId).first();
+  if (linked) return [];
+  const candidates = await db
+    .prepare(
+      `SELECT q.id, q.title, f.filename FROM queue_items q JOIN files f ON f.md5 = q.file_md5
+       WHERE q.status = 'dispatched' AND q.assigned_printer = ? AND q.dispatched_at BETWEEN ? AND ?
+       ORDER BY q.dispatched_at, q.id`,
+    )
+    .bind(e.serial, e.startedAt - RECONCILE_WINDOW_MS, e.startedAt + CLOCK_SKEW_MS)
+    .all<{ id: string; title: string; filename: string }>();
+  const item = candidates.results.find(
+    (q) => normalizeJobName(q.filename) === name || normalizeJobName(q.title) === name,
+  );
+  if (!item) return [];
+  return [
+    db
+      .prepare(
+        "UPDATE queue_items SET status = 'printing', job_id = ?, updated_at = ? WHERE id = ? AND status = 'dispatched'",
+      )
+      .bind(e.jobId, now, item.id),
+    db.prepare("UPDATE jobs SET queue_item_id = ? WHERE id = ?").bind(item.id, e.jobId),
+  ];
+}
+
+/**
+ * Close the run of a printing queue item: a finished job counts towards its quantity and re-queues the
+ * item until enough are printed; a failed or cancelled job marks it failed for an operator to look at.
+ */
+async function finishQueueItem(
+  db: D1Database,
+  e: IngestEventOf<"job.ended">,
+  now: number,
+): Promise<D1PreparedStatement[]> {
+  const item = await db
+    .prepare("SELECT id, quantity, completed FROM queue_items WHERE job_id = ? AND status = 'printing'")
+    .bind(e.jobId)
+    .first<{ id: string; quantity: number; completed: number }>();
+  if (!item) return [];
+  if (e.status !== "finished") {
+    return [
+      db.prepare("UPDATE queue_items SET status = 'failed', updated_at = ? WHERE id = ?").bind(now, item.id),
+    ];
+  }
+  const completed = item.completed + 1;
+  const status = completed >= item.quantity ? "done" : "queued";
+  return [
+    db
+      .prepare(
+        `UPDATE queue_items SET completed = ?, status = ?, updated_at = ?,
+           assigned_printer = CASE WHEN ? = 'queued' THEN NULL ELSE assigned_printer END,
+           dispatched_at = CASE WHEN ? = 'queued' THEN NULL ELSE dispatched_at END
+         WHERE id = ?`,
+      )
+      .bind(completed, status, now, status, status, item.id),
+  ];
 }
 
 async function loadJob(db: D1Database, jobId: string): Promise<JobRow | null> {
