@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { normalizeJobName } from "@fleet/shared";
 import type { AnalysisRequest } from "../store.ts";
 
 export interface FetchedFile {
@@ -21,13 +22,8 @@ export async function md5File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Strip `.gcode.3mf` / `.3mf` and compare case-insensitively. */
+/** Same job name, as {@link normalizeJobName} compares them (case, `.gcode.3mf`, trailing dot). */
 export function sameJobName(fileName: string, jobName: string | null): boolean {
   if (!jobName) return false;
-  const strip = (s: string) =>
-    s
-      .replace(/\.gcode\.3mf$|\.3mf$/i, "")
-      .trim()
-      .toLowerCase();
-  return strip(fileName) === strip(jobName);
+  return normalizeJobName(fileName) === normalizeJobName(jobName);
 }

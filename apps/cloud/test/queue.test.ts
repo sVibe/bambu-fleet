@@ -522,6 +522,12 @@ describe("reconcile", () => {
     expect(await getItem(item.id)).toMatchObject({ status: "printing", jobId });
   });
 
+  it("matches the H2D's job name with a trailing dot", async () => {
+    const item = await dispatched();
+    const jobId = await startJob(P1S, "Bracket set.", Date.now());
+    expect(await getItem(item.id)).toMatchObject({ status: "printing", jobId });
+  });
+
   it("ignores jobs on other printers, with other names, or outside the window", async () => {
     const item = await dispatched();
     await startJob(X1C, "Bracket set", Date.now());

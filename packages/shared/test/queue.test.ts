@@ -38,5 +38,6 @@ describe("queue helpers", () => {
     expect(normalizeJobName("Bracket Set.gcode.3mf")).toBe("bracket set");
     expect(normalizeJobName(" bracket set ")).toBe("bracket set");
     expect(normalizeJobName("lid.3mf")).toBe("lid");
+    expect(normalizeJobName("2600076_24V_20stk_PETG_H2D_NPJ.")).toBe("2600076_24v_20stk_petg_h2d_npj");
   });
 });

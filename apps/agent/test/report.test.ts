@@ -87,6 +87,8 @@ describe("file matching", () => {
     expect(sameJobName("Bracket set.gcode.3mf", "Bracket set")).toBe(true);
     expect(sameJobName("bracket SET.3mf", "Bracket set")).toBe(true);
     expect(sameJobName("Other.gcode.3mf", "Bracket set")).toBe(false);
+    // The H2D adds a trailing dot to the job name.
+    expect(sameJobName("Bracket set.gcode.3mf", "Bracket set.")).toBe(true);
     expect(fileBaseName("/data/Metadata/plate_1.gcode")).toBeNull();
     expect(fileBaseName("/sdcard/Widget.gcode.3mf")).toBe("Widget");
   });

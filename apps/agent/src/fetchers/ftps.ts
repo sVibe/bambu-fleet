@@ -88,16 +88,22 @@ export class FtpsFetcher implements JobFileFetcher {
   }
 }
 
-async function connect(printer: PrinterConfig): Promise<Client> {
+export async function connect(printer: PrinterConfig, port = 990): Promise<Client> {
   const client = new Client(30_000);
   await client.access({
     host: printer.host,
-    port: 990,
+    port,
     user: "bblp",
     password: printer.accessCode,
     secure: "implicit",
-    // The printer's certificate is issued by Bambu's private CA.
-    secureOptions: { rejectUnauthorized: false },
+    secureOptions: {
+      // The printer's certificate is issued by Bambu's private CA.
+      rejectUnauthorized: false,
+      // The printer's vsftpd requires data connections to resume the control connection's TLS session.
+      // basic-ftp opens them with these options; without a host, Node sends SNI "localhost", which
+      // doesn't match the control session (no SNI for an IP), so OpenSSL refuses to resume (522).
+      host: printer.host,
+    },
   });
   return client;
 }

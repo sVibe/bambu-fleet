@@ -46,10 +46,14 @@ export function normalizeModel(model: string | null | undefined): string | null 
   return key || null;
 }
 
-/** Job names as the printer reports them vs. queued file names: case-insensitive, without `.gcode.3mf`. */
+/**
+ * Job names as the printer reports them vs. queued file names: case-insensitive, without `.gcode.3mf`, and without
+ * the trailing dot the H2D adds ("Bracket set.").
+ */
 export function normalizeJobName(name: string | null | undefined): string {
   return (name ?? "")
     .trim()
+    .replace(/\.+$/, "")
     .replace(/(\.gcode)?\.3mf$/i, "")
     .replace(/\.gcode$/i, "")
     .trim()
