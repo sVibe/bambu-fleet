@@ -73,13 +73,16 @@ printing and then to done. Add `--speed 20` to the replay to make it quicker.
 3. **Set the vars** in `wrangler.jsonc`:
    - `BOOTSTRAP_ADMIN_EMAIL`: you.
    - `DEFAULT_ROLE`: `viewer`, or `none` to require invites.
-4. **Deploy:** `corepack pnpm --filter @fleet/cloud deploy`.
-5. **Put Cloudflare Access in front of the hostname** (Zero Trust → Access → Applications → Self-hosted):
+4. **Set the hostname** in `routes` in `wrangler.jsonc`. It's a custom domain, so its zone must be on the same
+   Cloudflare account as the Worker. `workers_dev` is off, so the dashboard is only reachable through Access.
+5. **Deploy:** `corepack pnpm --filter @fleet/cloud run deploy`. The `run` is needed because `pnpm deploy` is a
+   built-in command.
+6. **Put Cloudflare Access in front of the hostname** (Zero Trust → Access → Applications → Self-hosted):
    - Copy the team domain and the app's **AUD tag** into `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` and redeploy. The
      Worker verifies the Access JWT itself.
    - For `/ingest/*`, either add a **Bypass** policy for that path (the agent key still protects it) or issue an Access
      **service token** and put it in the agent's config.
-6. **Create an agent:** sign in, go to Admin → Agents → Create agent, and copy the key (shown once).
+7. **Create an agent:** sign in, go to Admin → Agents → Create agent, and copy the key (shown once).
 
 Roles:
 

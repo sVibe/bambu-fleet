@@ -1,8 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bambu-fleet",
+  "account_id": "6e79506a5875a80a38239d4770b868ed",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-09-01",
+  // Served only on the custom domain, which Cloudflare Access protects; no workers.dev or preview URLs.
+  "routes": [{ "pattern": "fleet.scanomat.ai", "zone_name": "scanomat.ai", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
   "assets": {
     // Serve the React app for unknown paths; /api and /ingest always reach the Worker.
     "not_found_handling": "single-page-application",
@@ -12,8 +17,7 @@
     {
       "binding": "DB",
       "database_name": "bambu-fleet",
-      // Replace with the id from `wrangler d1 create bambu-fleet` before deploying.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "1bae3025-5e54-4a7b-8f71-b665991b5776",
       "migrations_dir": "migrations"
     }
   ],
@@ -24,9 +28,9 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FleetLive"] }],
   "vars": {
     // Cloudflare Access: Zero Trust → Access → Applications → this app's "Application Audience (AUD) Tag".
-    "ACCESS_TEAM_DOMAIN": "",
-    "ACCESS_AUD": "",
-    "BOOTSTRAP_ADMIN_EMAIL": "",
+    "ACCESS_TEAM_DOMAIN": "scanomat.cloudflareaccess.com",
+    "ACCESS_AUD": "7efc00aaf12c0568d13896b814b79e362d72ae496b9b0182576e8e742368097e",
+    "BOOTSTRAP_ADMIN_EMAIL": "svp@scanomat.dk",
     "DEFAULT_ROLE": "viewer"
   },
   "observability": { "enabled": true }
