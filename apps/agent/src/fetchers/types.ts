@@ -22,7 +22,7 @@ export async function md5File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Same job name, as {@link normalizeJobName} compares them (case, `.gcode.3mf`, trailing dot). */
+/** Same job name, as {@link normalizeJobName} compares them (case, `.gcode.3mf`, trailing dots). */
 export function sameJobName(fileName: string, jobName: string | null): boolean {
   if (!jobName) return false;
   return normalizeJobName(fileName) === normalizeJobName(jobName);

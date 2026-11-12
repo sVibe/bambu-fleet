@@ -522,7 +522,7 @@ describe("reconcile", () => {
     expect(await getItem(item.id)).toMatchObject({ status: "printing", jobId });
   });
 
-  it("matches the H2D's job name with a trailing dot", async () => {
+  it("matches job names ending in a dot", async () => {
     const item = await dispatched();
     const jobId = await startJob(P1S, "Bracket set.", Date.now());
     expect(await getItem(item.id)).toMatchObject({ status: "printing", jobId });

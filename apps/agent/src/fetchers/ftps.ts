@@ -119,10 +119,29 @@ async function listCandidates(client: Client, dirs: string[]): Promise<Candidate
     }
     for (const info of list) {
       if (!info.isFile || !/\.3mf$/i.test(info.name)) continue;
-      out.push({ dir, info, modifiedAt: info.modifiedAt?.getTime() ?? null });
+      const modifiedAt = info.modifiedAt?.getTime() ?? parseListTime(info.rawModifiedAt, Date.now());
+      out.push({ dir, info, modifiedAt });
     }
   }
   return out;
+}
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/**
+ * A Unix `LIST` date ("Nov 09 14:26" for recent files, "Mar 25 2026" for older ones) as UTC milliseconds.
+ * basic-ftp only fills `modifiedAt` from MLSD, which the printer's vsftpd lacks; its LIST times are UTC.
+ */
+export function parseListTime(raw: string, now: number): number | null {
+  const m = /^([A-Za-z]{3})\s+(\d{1,2})\s+(?:(\d{1,2}):(\d{2})|(\d{4}))$/.exec(raw.trim());
+  const month = m ? MONTHS.indexOf((m[1] as string).toLowerCase()) : -1;
+  if (!m || month < 0) return null;
+  const day = Number(m[2]);
+  if (m[5]) return Date.UTC(Number(m[5]), month, day);
+  const year = new Date(now).getUTCFullYear();
+  const time = Date.UTC(year, month, day, Number(m[3]), Number(m[4]));
+  // Year-less dates are within the last six months, so one in the future belongs to last year.
+  return time > now + 24 * 3600 * 1000 ? Date.UTC(year - 1, month, day, Number(m[3]), Number(m[4])) : time;
 }
 
 /** Prefer an exact name match (newest first); else the newest 3MF written around the job start. */

@@ -48,14 +48,14 @@ export function normalizeModel(model: string | null | undefined): string | null 
 
 /**
  * Job names as the printer reports them vs. queued file names: case-insensitive, without `.gcode.3mf`, and without
- * the trailing dot the H2D adds ("Bracket set.").
+ * trailing dots. A project named "Bracket set." prints as job "Bracket set." from file "Bracket set..gcode.3mf".
  */
 export function normalizeJobName(name: string | null | undefined): string {
   return (name ?? "")
     .trim()
-    .replace(/\.+$/, "")
     .replace(/(\.gcode)?\.3mf$/i, "")
     .replace(/\.gcode$/i, "")
+    .replace(/\.+$/, "")
     .trim()
     .toLowerCase();
 }

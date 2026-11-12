@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseFile } from "../src/fetchers/ftps.ts";
+import { chooseFile, parseListTime } from "../src/fetchers/ftps.ts";
 import { sameJobName } from "../src/fetchers/types.ts";
 import { fileBaseName } from "../src/jobTracker.ts";
 import { mergeReport, normalizeReport } from "../src/report.ts";
@@ -87,7 +87,8 @@ describe("file matching", () => {
     expect(sameJobName("Bracket set.gcode.3mf", "Bracket set")).toBe(true);
     expect(sameJobName("bracket SET.3mf", "Bracket set")).toBe(true);
     expect(sameJobName("Other.gcode.3mf", "Bracket set")).toBe(false);
-    // The H2D adds a trailing dot to the job name.
+    // A project name ending in a dot: the H2D reports "Bracket set." and stores "Bracket set..gcode.3mf".
+    expect(sameJobName("Bracket set..gcode.3mf", "Bracket set.")).toBe(true);
     expect(sameJobName("Bracket set.gcode.3mf", "Bracket set.")).toBe(true);
     expect(fileBaseName("/data/Metadata/plate_1.gcode")).toBeNull();
     expect(fileBaseName("/sdcard/Widget.gcode.3mf")).toBe("Widget");
@@ -105,5 +106,14 @@ describe("file matching", () => {
     expect(chooseFile([recent, named], request)).toBe(named);
     expect(chooseFile([recent, file("old.3mf", 1)], { ...request, name: "Nope" })).toBe(recent);
     expect(chooseFile([file("old.3mf", 1)], { ...request, name: "Nope" })).toBeNull();
+  });
+
+  it("parses Unix LIST dates as UTC", () => {
+    const now = Date.UTC(2026, 10, 12, 8, 0);
+    expect(parseListTime("Nov 09 14:26", now)).toBe(Date.UTC(2026, 10, 9, 14, 26));
+    expect(parseListTime("Mar 25 2026", now)).toBe(Date.UTC(2026, 2, 25));
+    // Year-less dates later than now are from last year.
+    expect(parseListTime("Dec 30 10:00", now)).toBe(Date.UTC(2025, 11, 30, 10, 0));
+    expect(parseListTime("2026-11-09", now)).toBeNull();
   });
 });
