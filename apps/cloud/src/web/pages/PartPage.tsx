@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, invalidate, useMe, usePart, useParts } from "../api.ts";
+import { PartImage } from "../components/PartImage.tsx";
 import {
   Button,
   Card,
@@ -40,43 +41,70 @@ export function PartPage() {
       </p>
       <PageHeader title={part.data.part.name} subtitle={part.data.part.notes ?? undefined} />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <StatTile label="Printed" value={stats.printedQty} note={`${stats.jobs} jobs`} />
-        <StatTile
-          label="Success"
-          value={attempts ? percent(stats.printedQty / attempts) : "–"}
-          note={`${stats.failedQty} in failed or cancelled jobs`}
-        />
-        <StatTile
-          label="Avg per part"
-          value={grams(stats.avgG)}
-          note={
-            stats.wasteG ? `+ ${grams(stats.wasteG / Math.max(1, stats.printedQty))} waste share` : undefined
-          }
-        />
-        <StatTile
-          label="Most used filament"
-          value={
-            stats.topFilament ? (
-              <span className="inline-flex items-center gap-2">
-                <Swatch color={stats.topFilament.color} size={16} />
-                {stats.topFilament.material}
-              </span>
+      <div className="mb-6 grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]">
+        <Card className="flex flex-col p-3">
+          <PartImage
+            image={part.data.stats.image}
+            alt={
+              part.data.stats.image?.kind === "plate"
+                ? `Plate preview of ${part.data.stats.image.jobName}, which includes ${part.data.part.name}`
+                : `Top view of ${part.data.part.name}`
+            }
+            className="aspect-square w-full"
+          />
+          <p className="mt-2 text-xs text-muted">
+            {part.data.stats.image ? (
+              <>
+                {part.data.stats.image.kind === "part" ? "Top view from " : "Plate preview from "}
+                <Link to={`/jobs/${part.data.stats.image.jobId}`} className="text-ink-2 hover:underline">
+                  {part.data.stats.image.jobName}
+                </Link>
+              </>
             ) : (
-              "–"
-            )
-          }
-          note={
-            stats.topFilament
-              ? `${stats.topFilament.count} of ${stats.printedQty} parts (${percent(stats.topFilament.share)})`
-              : undefined
-          }
-        />
-        <StatTile
-          label="Total filament"
-          value={grams(stats.totalG)}
-          note={`last printed ${dateTime(stats.lastPrintedAt)}`}
-        />
+              "No preview yet: it appears once a job with this part is analyzed."
+            )}
+          </p>
+        </Card>
+        <div className="grid grid-cols-2 content-start gap-3 lg:grid-cols-3">
+          <StatTile label="Printed" value={stats.printedQty} note={`${stats.jobs} jobs`} />
+          <StatTile
+            label="Success"
+            value={attempts ? percent(stats.printedQty / attempts) : "–"}
+            note={`${stats.failedQty} in failed or cancelled jobs`}
+          />
+          <StatTile
+            label="Avg per part"
+            value={grams(stats.avgG)}
+            note={
+              stats.wasteG
+                ? `+ ${grams(stats.wasteG / Math.max(1, stats.printedQty))} waste share`
+                : undefined
+            }
+          />
+          <StatTile
+            label="Most used filament"
+            value={
+              stats.topFilament ? (
+                <span className="inline-flex items-center gap-2">
+                  <Swatch color={stats.topFilament.color} size={16} />
+                  {stats.topFilament.material}
+                </span>
+              ) : (
+                "–"
+              )
+            }
+            note={
+              stats.topFilament
+                ? `${stats.topFilament.count} of ${stats.printedQty} parts (${percent(stats.topFilament.share)})`
+                : undefined
+            }
+          />
+          <StatTile
+            label="Total filament"
+            value={grams(stats.totalG)}
+            note={`last printed ${dateTime(stats.lastPrintedAt)}`}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

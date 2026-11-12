@@ -33,7 +33,10 @@ scope.onmessage = async (event) => {
     },
   });
   try {
-    const plates = await analyzeThreeMf(file.stream().pipeThrough(tap), { fileName: file.name });
+    const plates = await analyzeThreeMf(file.stream().pipeThrough(tap), {
+      fileName: file.name,
+      partImages: false,
+    });
     scope.postMessage({ type: "done", md5: md5.hex(), plates });
   } catch (err) {
     scope.postMessage({ type: "error", message: err instanceof Error ? err.message : String(err) });

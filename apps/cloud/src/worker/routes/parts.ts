@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { PartDetail, PartListItem } from "../../api-types.ts";
 import { audit, requireRole } from "../auth.ts";
 import type { AppEnv } from "../env.ts";
+import { partImageUrl, thumbUrl } from "../util.ts";
 
 export const parts = new Hono<AppEnv>();
 
@@ -50,6 +51,48 @@ const DOMINANT_FILAMENT = `
   SELECT part_id, COALESCE(material, 'Unknown') AS material, color, COUNT(*) AS n
   FROM inst WHERE rn = 1 GROUP BY part_id, material, color`;
 
+/**
+ * The best picture per part: a cut-out of the part itself from its newest job, else the plate
+ * preview of the job where it shared the plate with the fewest other parts.
+ */
+const PART_IMAGE = `
+  SELECT part_id, job_id, job_name, identify_id, image_key, thumb_key FROM (
+    SELECT jp.part_id, jp.job_id, j.name AS job_name, jp.identify_id, jp.image_key, j.thumb_key,
+      ROW_NUMBER() OVER (
+        PARTITION BY jp.part_id
+        ORDER BY jp.image_key IS NULL,
+          CASE WHEN jp.image_key IS NULL
+            THEN (SELECT COUNT(DISTINCT x.part_id) FROM job_parts x WHERE x.job_id = jp.job_id) END,
+          j.started_at DESC
+      ) AS rn
+    FROM job_parts jp JOIN jobs j ON j.id = jp.job_id
+    WHERE (jp.image_key IS NOT NULL OR j.thumb_key IS NOT NULL) %FILTER%
+  ) WHERE rn = 1`;
+
+type PartImage = NonNullable<PartListItem["image"]>;
+
+function partImages(
+  rows: Array<{
+    part_id: string;
+    job_id: string;
+    job_name: string;
+    identify_id: string;
+    image_key: string | null;
+    thumb_key: string | null;
+  }>,
+): Map<string, PartImage> {
+  const out = new Map<string, PartImage>();
+  for (const r of rows) {
+    const job = { jobId: r.job_id, jobName: r.job_name };
+    if (r.image_key) out.set(r.part_id, { url: partImageUrl(r.job_id, r.identify_id), kind: "part", ...job });
+    else {
+      const url = thumbUrl(r.job_id, r.thumb_key);
+      if (url) out.set(r.part_id, { url, kind: "plate", ...job });
+    }
+  }
+  return out;
+}
+
 type TopFilament = NonNullable<PartListItem["topFilament"]>;
 
 /** Most used material per part (by instances printed), with its most common colour. */
@@ -77,7 +120,11 @@ export function topFilaments(
   return out;
 }
 
-function toItem(r: PartStatsRow, top: TopFilament | null = null): PartListItem {
+function toItem(
+  r: PartStatsRow,
+  top: TopFilament | null = null,
+  image: PartImage | null = null,
+): PartListItem {
   return {
     id: r.id,
     name: r.name,
@@ -90,13 +137,14 @@ function toItem(r: PartStatsRow, top: TopFilament | null = null): PartListItem {
     lastPrintedAt: r.last_printed_at,
     materials: r.materials ? [...new Set(r.materials.split(","))].sort() : [],
     topFilament: top,
+    image,
   };
 }
 
 parts.get("/parts", async (c) => {
   const q = c.req.query("q");
   const db = c.env.DB;
-  const [rows, dominant] = await db.batch([
+  const [rows, dominant, imageRows] = await db.batch([
     db
       .prepare(
         `${PART_STATS} WHERE pt.merged_into IS NULL ${q ? "AND pt.name LIKE ?" : ""}
@@ -104,9 +152,15 @@ parts.get("/parts", async (c) => {
       )
       .bind(...(q ? [`%${q}%`] : [])),
     db.prepare(DOMINANT_FILAMENT.replace("%FILTER%", "")),
+    db.prepare(PART_IMAGE.replace("%FILTER%", "")),
   ]);
   const top = topFilaments((dominant?.results ?? []) as Parameters<typeof topFilaments>[0]);
-  return c.json(((rows?.results ?? []) as PartStatsRow[]).map((r) => toItem(r, top.get(r.id) ?? null)));
+  const images = partImages((imageRows?.results ?? []) as Parameters<typeof partImages>[0]);
+  return c.json(
+    ((rows?.results ?? []) as PartStatsRow[]).map((r) =>
+      toItem(r, top.get(r.id) ?? null, images.get(r.id) ?? null),
+    ),
+  );
 });
 
 parts.get("/parts/:id", async (c) => {
@@ -125,7 +179,7 @@ parts.get("/parts/:id", async (c) => {
   if (!part) return c.json({ error: "Part not found" }, 404);
   if (part.merged_into) return c.json({ mergedInto: part.merged_into }, 409);
 
-  const [stats, materials, history, dominant] = await db.batch([
+  const [stats, materials, history, dominant, imageRows] = await db.batch([
     db.prepare(`${PART_STATS} WHERE pt.id = ? GROUP BY pt.id`).bind(id),
     db
       .prepare(
@@ -145,8 +199,10 @@ parts.get("/parts/:id", async (c) => {
       )
       .bind(id),
     db.prepare(DOMINANT_FILAMENT.replace("%FILTER%", "AND jp.part_id = ?")).bind(id),
+    db.prepare(PART_IMAGE.replace("%FILTER%", "AND jp.part_id = ?")).bind(id),
   ]);
   const top = topFilaments((dominant?.results ?? []) as Parameters<typeof topFilaments>[0]).get(id) ?? null;
+  const image = partImages((imageRows?.results ?? []) as Parameters<typeof partImages>[0]).get(id) ?? null;
 
   const body: PartDetail = {
     part: { id: part.id, name: part.name, notes: part.notes, createdAt: part.created_at },
@@ -163,6 +219,7 @@ parts.get("/parts/:id", async (c) => {
           materials: null,
         } as PartStatsRow),
       top,
+      image,
     ),
     materials: ((materials?.results ?? []) as Array<Record<string, unknown>>).map((r) => ({
       material: r.material as string | null,

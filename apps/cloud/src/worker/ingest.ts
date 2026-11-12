@@ -14,6 +14,7 @@ import { ulid } from "ulidx";
 import { requireAgent } from "./auth.ts";
 import type { AppEnv, Env } from "./env.ts";
 import { fleetLive } from "./live.ts";
+import { partImageKey } from "./util.ts";
 
 export const ingest = new Hono<AppEnv>();
 ingest.use("*", requireAgent);
@@ -312,6 +313,17 @@ async function jobAnalysis(
     await env.FILES.put(thumbKey, bytes, { httpMetadata: { contentType: "image/png" } });
   }
 
+  const imageKeys = new Map<string, string>();
+  await Promise.all(
+    a.parts.map(async (p) => {
+      if (!p.imagePngBase64 || !/^\d+$/.test(p.identifyId)) return;
+      const key = partImageKey(e.jobId, p.identifyId);
+      const bytes = Uint8Array.from(atob(p.imagePngBase64), (ch) => ch.charCodeAt(0));
+      await env.FILES.put(key, bytes, { httpMetadata: { contentType: "image/png" } });
+      imageKeys.set(p.identifyId, key);
+    }),
+  );
+
   const statements: D1PreparedStatement[] = [
     ensureJob(db, e.jobId, e.serial, e.at, now),
     db
@@ -370,8 +382,8 @@ async function jobAnalysis(
     statements.push(
       db
         .prepare(
-          `INSERT INTO job_parts (job_id, identify_id, part_id, object_name, skipped, weight_g, waste_share_g, per_filament)
-           VALUES (?, ?, (SELECT COALESCE(merged_into, id) FROM parts WHERE normalized_name = ?), ?, ?, ?, ?, ?)`,
+          `INSERT INTO job_parts (job_id, identify_id, part_id, object_name, skipped, weight_g, waste_share_g, per_filament, image_key)
+           VALUES (?, ?, (SELECT COALESCE(merged_into, id) FROM parts WHERE normalized_name = ?), ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           e.jobId,
@@ -382,6 +394,7 @@ async function jobAnalysis(
           p.weightG,
           p.wasteShareG,
           JSON.stringify(p.perFilament),
+          imageKeys.get(p.identifyId) ?? null,
         ),
     );
   }

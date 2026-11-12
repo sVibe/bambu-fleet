@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useParts } from "../api.ts";
+import { PartImage } from "../components/PartImage.tsx";
 import { TopFilament } from "../components/TopFilament.tsx";
 import { Card, Empty, ErrorState, inputClass, Loading, PageHeader, Td, Th } from "../components/ui.tsx";
 import { dateTime, grams, percent } from "../format.ts";
@@ -51,12 +52,17 @@ export function PartsPage() {
                 return (
                   <tr key={p.id} className="hover:bg-wash/60">
                     <Td>
-                      <Link to={`/parts/${p.id}`} className="font-medium hover:underline">
-                        {p.name}
-                      </Link>
-                      <span className="ml-2 text-xs text-muted">
-                        {p.jobs} {p.jobs === 1 ? "job" : "jobs"}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <PartImage image={p.image} alt="" className="size-10 shrink-0 p-1" />
+                        <div>
+                          <Link to={`/parts/${p.id}`} className="font-medium hover:underline">
+                            {p.name}
+                          </Link>
+                          <span className="ml-2 text-xs text-muted">
+                            {p.jobs} {p.jobs === 1 ? "job" : "jobs"}
+                          </span>
+                        </div>
+                      </div>
                     </Td>
                     <Td className="tabular text-right">{p.printedQty}</Td>
                     <Td className="tabular text-right text-ink-2">

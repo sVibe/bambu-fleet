@@ -29,6 +29,8 @@ export const partUsageSchema = z.object({
   wasteShareG: z.number().nullable(),
   /** Grams per slicer filament id. */
   perFilament: z.record(z.string(), z.number()),
+  /** Top-down cut-out of this object; sent for one object per distinct part name. */
+  imagePngBase64: z.string().max(1_500_000).nullable().optional(),
 });
 export type PartUsage = z.infer<typeof partUsageSchema>;
 

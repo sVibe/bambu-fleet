@@ -200,6 +200,29 @@ describe("job lifecycle", () => {
     expect((await call(`/api/parts/${lid?.id}`, { as: ADMIN })).status).toBe(409);
   });
 
+  it("shows each part's own cut-out, falling back to the plate preview", async () => {
+    await runJob("finished", 4);
+    const list = (await (await call("/api/parts", { as: ADMIN })).json()) as PartListItem[];
+    const bracket = list.find((p) => p.name === "Bracket");
+    expect(bracket?.image).toEqual({
+      url: `/api/thumbs/${JOB}/parts/139`,
+      kind: "part",
+      jobId: JOB,
+      jobName: "Gears",
+    });
+    const png = await call(bracket?.image?.url as string, { as: ADMIN });
+    expect(png.status).toBe(200);
+    expect(png.headers.get("content-type")).toBe("image/png");
+    expect((await call(`/api/thumbs/${JOB}/parts/140`, { as: ADMIN })).status).toBe(404);
+
+    // Re-analysis without cut-outs (an older slicer): the part page shows the plate instead.
+    const analysis = await sampleAnalysis();
+    for (const p of analysis.parts) delete p.imagePngBase64;
+    await ingest([{ type: "job.analysis", id: "e5", at: 5, serial: SERIAL, jobId: JOB, analysis }]);
+    const detail = (await (await call(`/api/parts/${bracket?.id}`, { as: ADMIN })).json()) as PartDetail;
+    expect(detail.stats.image).toMatchObject({ url: `/api/thumbs/${JOB}`, kind: "plate" });
+  });
+
   it("returns busy intervals clipped to the utilization range", async () => {
     await runJob("finished", 4);
     const res = (await (

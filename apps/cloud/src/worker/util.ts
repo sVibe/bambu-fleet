@@ -22,6 +22,12 @@ export function thumbUrl(jobId: string, thumbKey: string | null): string | null 
   return thumbKey ? `/api/thumbs/${encodeURIComponent(jobId)}` : null;
 }
 
+/** R2 key of an object's top-down cut-out within a job. */
+export const partImageKey = (jobId: string, identifyId: string) => `thumbs/${jobId}/parts/${identifyId}.png`;
+
+export const partImageUrl = (jobId: string, identifyId: string) =>
+  `/api/thumbs/${encodeURIComponent(jobId)}/parts/${encodeURIComponent(identifyId)}`;
+
 export const round = (n: number | null | undefined, digits = 1): number => {
   const f = 10 ** digits;
   return Math.round((n ?? 0) * f) / f;

@@ -9,7 +9,7 @@ import type {
 } from "../../api-types.ts";
 import type { AppEnv } from "../env.ts";
 import { fleetLive } from "../live.ts";
-import { intParam, optionalInt, parseJson, thumbUrl } from "../util.ts";
+import { intParam, optionalInt, parseJson, partImageKey, thumbUrl } from "../util.ts";
 
 export const jobs = new Hono<AppEnv>();
 
@@ -209,6 +209,14 @@ jobs.get("/jobs/:id", async (c) => {
 
 jobs.get("/thumbs/:jobId", async (c) => {
   const object = await c.env.FILES.get(`thumbs/${c.req.param("jobId")}.png`);
+  if (!object) return c.notFound();
+  return new Response(object.body, {
+    headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" },
+  });
+});
+
+jobs.get("/thumbs/:jobId/parts/:identifyId{[0-9]+}", async (c) => {
+  const object = await c.env.FILES.get(partImageKey(c.req.param("jobId"), c.req.param("identifyId")));
   if (!object) return c.notFound();
   return new Response(object.body, {
     headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" },

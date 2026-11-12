@@ -110,6 +110,11 @@ export interface PartListItem {
    * grams; share is that material's fraction of printed parts. Null before any finished print.
    */
   topFilament: { material: string; color: string | null; count: number; share: number } | null;
+  /**
+   * Picture of the part: its own top-down cut-out from the newest job that has one ("part"), else
+   * the plate preview of the job with the fewest other parts ("plate"). Null when no job has either.
+   */
+  image: { url: string; kind: "part" | "plate"; jobId: string; jobName: string } | null;
 }
 
 export interface PartDetail {

@@ -1,4 +1,5 @@
 import { strToU8, Zip, ZipDeflate, zipSync } from "fflate";
+import { encodePng } from "./png.ts";
 
 /** Builders for synthetic Bambu-style `.gcode.3mf` files, used by tests and agent replay demos. */
 
@@ -33,6 +34,8 @@ export interface Sample3mfOptions {
   streaming?: boolean;
   /** Omit object labels from the G-code (label objects disabled in the slicer). */
   noLabels?: boolean;
+  /** Include `top_N.png` / `pick_N.png` renders of the objects (default true). */
+  renders?: boolean;
 }
 
 export const SAMPLE_OBJECTS: SampleObject[] = [
@@ -50,6 +53,49 @@ const TINY_PNG = Uint8Array.from(
   atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="),
   (c) => c.charCodeAt(0),
 );
+
+const RENDER_SIZE = 256;
+
+/**
+ * A top-down render and its pick map, like Bambu Studio's `top_N.png` / `pick_N.png`: objects in a
+ * row, discs and rounded blocks alternating, shaded in their filament colour.
+ */
+export function buildSampleRenders(
+  objects: SampleObject[],
+  filaments: SampleFilament[],
+): { top: Uint8Array; pick: Uint8Array } {
+  const size = RENDER_SIZE;
+  const top = new Uint8Array(size * size * 4);
+  const pick = new Uint8Array(size * size * 4);
+  const cell = size / Math.max(1, objects.length);
+  objects.forEach((o, i) => {
+    const hex = (filaments[o.filament] ?? filaments[0])?.color ?? "#808080";
+    const rgb = [1, 3, 5].map((at) => Number.parseInt(hex.slice(at, at + 2), 16));
+    const id = Number(o.identifyId);
+    const cx = cell * (i + 0.5);
+    const cy = size / 2;
+    const r = Math.min(cell * 0.4, size * 0.3);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x + 0.5 - cx;
+        const dy = y + 0.5 - cy;
+        const inside =
+          i % 2 === 0
+            ? Math.hypot(dx, dy) <= r && Math.hypot(dx, dy) >= r * 0.35
+            : Math.abs(dx) <= r * 0.8 && Math.abs(dy) <= r && !(Math.abs(dx) < r * 0.3 && dy < -r * 0.2);
+        if (!inside) continue;
+        const at = (y * size + x) * 4;
+        const shade = 0.75 + 0.25 * (1 - (dx + dy) / (2 * r));
+        top.set([...rgb.map((c) => Math.min(255, Math.round((c ?? 128) * shade + 24))), 255], at);
+        pick.set([id & 0xff, (id >> 8) & 0xff, (id >> 16) & 0xff, 255], at);
+      }
+    }
+  });
+  return {
+    top: encodePng({ width: size, height: size, data: top }),
+    pick: encodePng({ width: size, height: size, data: pick }),
+  };
+}
 
 export function buildSampleGcode(options: Sample3mfOptions = {}): { gcode: string; mmByFilament: number[] } {
   const layers = options.layers ?? 4;
@@ -143,6 +189,11 @@ export function buildSample3mf(options: Sample3mfOptions = {}): Uint8Array {
     ),
     [`Metadata/plate_${plate}.png`]: TINY_PNG,
   };
+  if (options.renders !== false) {
+    const { top, pick } = buildSampleRenders(options.objects ?? SAMPLE_OBJECTS, filaments);
+    files[`Metadata/top_${plate}.png`] = top;
+    files[`Metadata/pick_${plate}.png`] = pick;
+  }
   return options.streaming ? streamingZip(files) : zipSync(files, { level: 6 });
 }
 

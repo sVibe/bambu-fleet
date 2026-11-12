@@ -4,6 +4,7 @@ import {
   type JobAnalysis,
   materialFor,
   normalizeColor,
+  normalizePartName,
   type PartUsage,
 } from "@fleet/shared";
 import { GcodeAttributor, INITIAL_FILAMENT, NON_OBJECT, type RawAttribution } from "./gcode.ts";
@@ -13,6 +14,7 @@ import {
   parseSliceInfo,
   type SlicePlate,
 } from "./metadata.ts";
+import { cutOutParts } from "./partImages.ts";
 import { type ByteSource, collect, walkZip } from "./zip.ts";
 
 export interface AnalyzeOptions {
@@ -20,6 +22,8 @@ export interface AnalyzeOptions {
   fileMd5?: string | null;
   /** Include each plate's PNG preview as base64 (default true). */
   thumbnails?: boolean;
+  /** Cut each distinct part out of the plate's top-down render (default: same as `thumbnails`). */
+  partImages?: boolean;
 }
 
 const decoder = new TextDecoder();
@@ -36,6 +40,9 @@ export async function analyzeThreeMf(
   let projectSettings: string | null = null;
   const gcode = new Map<number, RawAttribution>();
   const thumbs = new Map<number, Uint8Array>();
+  const tops = new Map<number, Uint8Array>();
+  const picks = new Map<number, Uint8Array>();
+  const wantImages = options.partImages ?? options.thumbnails !== false;
 
   await walkZip(source, (name) => {
     if (name === "Metadata/slice_info.config") return collect((b) => (sliceInfo = decoder.decode(b)));
@@ -50,6 +57,8 @@ export async function analyzeThreeMf(
     }
     const t = /^Metadata\/plate_(\d+)\.png$/.exec(name);
     if (t && options.thumbnails !== false) return collect((b) => thumbs.set(Number(t[1]), b));
+    const v = /^Metadata\/(top|pick)_(\d+)\.png$/.exec(name);
+    if (v && wantImages) return collect((b) => (v[1] === "top" ? tops : picks).set(Number(v[2]), b));
     return null;
   });
 
@@ -57,15 +66,31 @@ export async function analyzeThreeMf(
   const settings = projectSettings ? parseProjectSettings(projectSettings) : null;
   const indices = [...new Set([...plates.map((p) => p.index), ...gcode.keys()])].sort((a, b) => a - b);
 
-  return indices.map((index) =>
-    buildAnalysis(
-      plates.find((p) => p.index === index) ?? emptyPlate(index),
+  return indices.map((index) => {
+    const plate = plates.find((p) => p.index === index) ?? emptyPlate(index);
+    const top = tops.get(index);
+    const pick = picks.get(index);
+    const images = top && pick ? cutOutParts(top, pick, onePerPart(plate)) : new Map<string, Uint8Array>();
+    return buildAnalysis(
+      plate,
       gcode.get(index) ?? null,
       settings,
       thumbs.get(index) ?? null,
       options,
-    ),
-  );
+      images,
+    );
+  });
+}
+
+/** One object per distinct part name, preferring one that was printed, so each part gets one image. */
+function onePerPart(plate: SlicePlate): string[] {
+  const chosen = new Map<string, { identifyId: string; skipped: boolean }>();
+  for (const o of plate.objects) {
+    const key = normalizePartName(o.name);
+    const current = chosen.get(key);
+    if (!current || (current.skipped && !o.skipped)) chosen.set(key, o);
+  }
+  return [...chosen.values()].map((o) => o.identifyId);
 }
 
 /** Pick the plate that was printed: by index when known, else the one with G-code. */
@@ -97,6 +122,7 @@ export function buildAnalysis(
   settings: ProjectFilamentSettings | null,
   thumbnail: Uint8Array | null,
   options: AnalyzeOptions = {},
+  partImages: Map<string, Uint8Array> = new Map(),
 ): JobAnalysis {
   const sliceFilaments = new Map(plate.filaments.map((f) => [f.id, f]));
   const firstUsed = plate.filaments.find((f) => (f.usedG ?? 0) > 0)?.id ?? plate.filaments[0]?.id ?? 1;
@@ -236,10 +262,18 @@ export function buildAnalysis(
     wasteG,
     attribution,
     filaments,
-    parts,
+    parts: withImages(parts, partImages),
     layerCurve,
     thumbnailPngBase64: thumbnail ? toBase64(thumbnail) : null,
   };
+}
+
+function withImages(parts: PartUsage[], images: Map<string, Uint8Array>): PartUsage[] {
+  if (images.size === 0) return parts;
+  return parts.map((p) => {
+    const png = images.get(p.identifyId);
+    return png ? { ...p, imagePngBase64: toBase64(png) } : p;
+  });
 }
 
 function toBase64(bytes: Uint8Array): string {
