@@ -40,7 +40,7 @@ export function PartPage() {
       </p>
       <PageHeader title={part.data.part.name} subtitle={part.data.part.notes ?? undefined} />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
         <StatTile label="Printed" value={stats.printedQty} note={`${stats.jobs} jobs`} />
         <StatTile
           label="Success"
@@ -52,6 +52,24 @@ export function PartPage() {
           value={grams(stats.avgG)}
           note={
             stats.wasteG ? `+ ${grams(stats.wasteG / Math.max(1, stats.printedQty))} waste share` : undefined
+          }
+        />
+        <StatTile
+          label="Most used filament"
+          value={
+            stats.topFilament ? (
+              <span className="inline-flex items-center gap-2">
+                <Swatch color={stats.topFilament.color} size={16} />
+                {stats.topFilament.material}
+              </span>
+            ) : (
+              "–"
+            )
+          }
+          note={
+            stats.topFilament
+              ? `${stats.topFilament.count} of ${stats.printedQty} parts (${percent(stats.topFilament.share)})`
+              : undefined
           }
         />
         <StatTile

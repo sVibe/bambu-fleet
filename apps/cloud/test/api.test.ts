@@ -11,9 +11,11 @@ import type {
   PartListItem,
   PrinterSummary,
   StatsResponse,
+  UtilizationResponse,
 } from "../src/api-types.ts";
 import { sha256Hex } from "../src/worker/auth.ts";
 import worker from "../src/worker/index.ts";
+import { topFilaments } from "../src/worker/routes/parts.ts";
 
 const AGENT_KEY = "test-agent-key-0123456789";
 const SERIAL = "01P00A000000001";
@@ -182,6 +184,7 @@ describe("job lifecycle", () => {
     const bracket = list.find((p) => p.name === "Bracket");
     const lid = list.find((p) => p.name === "Lid");
     expect(bracket).toMatchObject({ printedQty: 1, failedQty: 0, totalG: 4, avgG: 4, materials: ["PLA"] });
+    expect(bracket?.topFilament).toEqual({ material: "PLA", color: "F98C36", count: 1, share: 1 });
 
     const merge = await call(`/api/parts/${lid?.id}/merge`, {
       method: "POST",
@@ -192,7 +195,18 @@ describe("job lifecycle", () => {
     const merged = (await (await call(`/api/parts/${bracket?.id}`, { as: ADMIN })).json()) as PartDetail;
     expect(merged.stats.printedQty).toBe(2);
     expect(merged.materials.map((m) => m.material).sort()).toEqual(["PETG", "PLA"]);
+    // One part each: a tie resolves alphabetically, at a 50% share.
+    expect(merged.stats.topFilament).toMatchObject({ material: "PETG", count: 1, share: 0.5 });
     expect((await call(`/api/parts/${lid?.id}`, { as: ADMIN })).status).toBe(409);
+  });
+
+  it("returns busy intervals clipped to the utilization range", async () => {
+    await runJob("finished", 4);
+    const res = (await (
+      await call("/api/utilization?from=2000000&to=3000000", { as: ADMIN })
+    ).json()) as UtilizationResponse;
+    expect(res.printers.map((p) => p.serial)).toEqual([SERIAL]);
+    expect(res.intervals).toEqual([{ serial: SERIAL, start: 2_000_000, end: 3_000_000 }]);
   });
 
   it("summarizes stats", async () => {
@@ -300,5 +314,16 @@ describe("users and roles", () => {
       ctx,
     );
     expect(res.status).toBe(403);
+  });
+});
+
+describe("topFilaments", () => {
+  it("picks the material most parts were printed in, and its most common colour", () => {
+    const top = topFilaments([
+      { part_id: "p", material: "PLA", color: "FFFFFF", n: 10 },
+      { part_id: "p", material: "PETG", color: "161616", n: 200 },
+      { part_id: "p", material: "PETG", color: "D9D9D9", n: 50 },
+    ]);
+    expect(top.get("p")).toEqual({ material: "PETG", color: "161616", count: 250, share: 250 / 260 });
   });
 });

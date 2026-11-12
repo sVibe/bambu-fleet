@@ -8,6 +8,7 @@ const NAV = [
   { to: "/history", label: "History" },
   { to: "/parts", label: "Parts" },
   { to: "/analytics", label: "Materials" },
+  { to: "/utilization", label: "Utilization" },
 ];
 
 export function Layout() {

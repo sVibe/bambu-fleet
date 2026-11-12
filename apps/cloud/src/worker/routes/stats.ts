@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { StatsBucket, StatsResponse } from "../../api-types.ts";
+import type { StatsBucket, StatsResponse, UtilizationResponse } from "../../api-types.ts";
 import type { AppEnv } from "../env.ts";
 import { optionalInt, round } from "../util.ts";
 
@@ -109,6 +109,45 @@ stats.get("/stats", async (c) => {
       name: r.name as string,
       qty: r.qty as number,
       grams: round(r.grams as number),
+    })),
+  };
+  return c.json(body);
+});
+
+/** Most intervals returned per request; ~a year of a busy 20-printer fleet. */
+const MAX_INTERVALS = 50_000;
+
+/**
+ * Busy intervals per printer (every job, whatever its outcome), clipped to the range. The browser
+ * buckets them by local hour and day, so hours of the day follow the viewer's time zone.
+ */
+stats.get("/utilization", async (c) => {
+  const now = Date.now();
+  const to = Math.min(optionalInt(c.req.query("to")) ?? now, now);
+  const from = optionalInt(c.req.query("from")) ?? to - 30 * 24 * 3600 * 1000;
+  const db = c.env.DB;
+  const [printers, intervals] = await db.batch([
+    db.prepare("SELECT serial, name, model, created_at FROM printers WHERE archived = 0 ORDER BY name"),
+    db
+      .prepare(
+        `SELECT printer_serial, MAX(started_at, ?) AS s, MIN(COALESCE(ended_at, ?), ?) AS e
+         FROM jobs WHERE started_at < ? AND COALESCE(ended_at, ?) > ?
+         ORDER BY started_at LIMIT ?`,
+      )
+      .bind(from, now, to, to, now, from, MAX_INTERVALS),
+  ]);
+  const body: UtilizationResponse = {
+    range: { from, to },
+    printers: ((printers?.results ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      serial: r.serial as string,
+      name: r.name as string,
+      model: r.model as string | null,
+      createdAt: r.created_at as number,
+    })),
+    intervals: ((intervals?.results ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      serial: r.printer_serial as string,
+      start: r.s as number,
+      end: r.e as number,
     })),
   };
   return c.json(body);

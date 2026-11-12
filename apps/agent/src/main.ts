@@ -111,7 +111,7 @@ async function replay(): Promise<void> {
     await agent.runAnalyses();
     await agent.flushOutbox();
     await agent.flushLive();
-    if (store.pendingCount() === 0) break;
+    if (store.pendingCount() === 0 && store.dueAnalyses(Date.now(), 1).length === 0) break;
     await new Promise((r) => setTimeout(r, 1000));
   }
   await agent.stop();

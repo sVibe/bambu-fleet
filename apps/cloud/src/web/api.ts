@@ -11,6 +11,7 @@ import type {
   QueueItem,
   StatsResponse,
   UserRow,
+  UtilizationResponse,
 } from "../api-types.ts";
 
 export class ApiError extends Error {
@@ -91,6 +92,12 @@ export const useQueue = (view: "active" | "history") =>
     queryFn: () => api<QueueItem[]>(`/api/queue${qs({ view })}`),
     // Suggestions follow live printer state, and items move on when printers report jobs.
     refetchInterval: 10_000,
+  });
+
+export const useUtilization = (from: number) =>
+  useQuery({
+    queryKey: ["utilization", from],
+    queryFn: () => api<UtilizationResponse>(`/api/utilization${qs({ from })}`),
   });
 
 export const useUsers = () =>

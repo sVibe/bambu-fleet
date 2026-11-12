@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useParts } from "../api.ts";
+import { TopFilament } from "../components/TopFilament.tsx";
 import { Card, Empty, ErrorState, inputClass, Loading, PageHeader, Td, Th } from "../components/ui.tsx";
 import { dateTime, grams, percent } from "../format.ts";
 
@@ -13,7 +14,7 @@ export function PartsPage() {
     <>
       <PageHeader
         title="Parts"
-        subtitle="Every object printed, grouped by name. Counts only include finished jobs; skipped objects are excluded."
+        subtitle="Every object printed, grouped by name. Counts and averages only include finished jobs; skipped objects are excluded."
       />
       <input
         type="search"
@@ -38,9 +39,9 @@ export function PartsPage() {
                 <Th>Part</Th>
                 <Th className="text-right">Printed</Th>
                 <Th className="text-right">Success</Th>
-                <Th className="text-right">Avg per part</Th>
+                <Th className="text-right">Avg g / part</Th>
                 <Th className="text-right">Total</Th>
-                <Th>Materials</Th>
+                <Th>Most used filament</Th>
                 <Th>Last printed</Th>
               </tr>
             </thead>
@@ -63,7 +64,9 @@ export function PartsPage() {
                     </Td>
                     <Td className="tabular text-right">{grams(p.avgG)}</Td>
                     <Td className="tabular text-right text-ink-2">{grams(p.totalG)}</Td>
-                    <Td className="text-ink-2">{p.materials.join(", ") || "–"}</Td>
+                    <Td>
+                      <TopFilament top={p.topFilament} materials={p.materials} />
+                    </Td>
                     <Td className="tabular whitespace-nowrap text-ink-2">{dateTime(p.lastPrintedAt)}</Td>
                   </tr>
                 );

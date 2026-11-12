@@ -35,7 +35,49 @@ interface PartStatsRow {
   materials: string | null;
 }
 
-function toItem(r: PartStatsRow): PartListItem {
+/**
+ * Each finished, non-skipped part instance counts once, under the filament that supplied most of
+ * its grams. Rows: per part, per dominant material and colour, the number of instances.
+ */
+const DOMINANT_FILAMENT = `
+  WITH inst AS (
+    SELECT jp.part_id, jf.material, jf.color,
+      ROW_NUMBER() OVER (PARTITION BY jp.job_id, jp.identify_id ORDER BY je.value DESC) AS rn
+    FROM job_parts jp JOIN jobs j ON j.id = jp.job_id, json_each(jp.per_filament) je
+    JOIN job_filaments jf ON jf.job_id = jp.job_id AND jf.idx = CAST(je.key AS INTEGER)
+    WHERE j.status = 'finished' AND jp.skipped = 0 AND je.value > 0 %FILTER%
+  )
+  SELECT part_id, COALESCE(material, 'Unknown') AS material, color, COUNT(*) AS n
+  FROM inst WHERE rn = 1 GROUP BY part_id, material, color`;
+
+type TopFilament = NonNullable<PartListItem["topFilament"]>;
+
+/** Most used material per part (by instances printed), with its most common colour. */
+export function topFilaments(
+  rows: Array<{ part_id: string; material: string; color: string | null; n: number }>,
+) {
+  const byPart = new Map<string, Map<string, { n: number; colors: Map<string | null, number> }>>();
+  for (const r of rows) {
+    const materials = byPart.get(r.part_id) ?? new Map();
+    byPart.set(r.part_id, materials);
+    const m = materials.get(r.material) ?? { n: 0, colors: new Map() };
+    materials.set(r.material, m);
+    m.n += r.n;
+    m.colors.set(r.color, (m.colors.get(r.color) ?? 0) + r.n);
+  }
+  const out = new Map<string, TopFilament>();
+  for (const [partId, materials] of byPart) {
+    const total = [...materials.values()].reduce((n, m) => n + m.n, 0);
+    const [material, top] = [...materials.entries()].sort(
+      (a, b) => b[1].n - a[1].n || a[0].localeCompare(b[0]),
+    )[0] as [string, { n: number; colors: Map<string | null, number> }];
+    const color = [...top.colors.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    out.set(partId, { material, color, count: top.n, share: top.n / total });
+  }
+  return out;
+}
+
+function toItem(r: PartStatsRow, top: TopFilament | null = null): PartListItem {
   return {
     id: r.id,
     name: r.name,
@@ -47,18 +89,24 @@ function toItem(r: PartStatsRow): PartListItem {
     wasteG: r.waste_g,
     lastPrintedAt: r.last_printed_at,
     materials: r.materials ? [...new Set(r.materials.split(","))].sort() : [],
+    topFilament: top,
   };
 }
 
 parts.get("/parts", async (c) => {
   const q = c.req.query("q");
-  const rows = await c.env.DB.prepare(
-    `${PART_STATS} WHERE pt.merged_into IS NULL ${q ? "AND pt.name LIKE ?" : ""}
-     GROUP BY pt.id ORDER BY printed_qty DESC, pt.name LIMIT 1000`,
-  )
-    .bind(...(q ? [`%${q}%`] : []))
-    .all<PartStatsRow>();
-  return c.json(rows.results.map(toItem));
+  const db = c.env.DB;
+  const [rows, dominant] = await db.batch([
+    db
+      .prepare(
+        `${PART_STATS} WHERE pt.merged_into IS NULL ${q ? "AND pt.name LIKE ?" : ""}
+         GROUP BY pt.id ORDER BY printed_qty DESC, pt.name LIMIT 1000`,
+      )
+      .bind(...(q ? [`%${q}%`] : [])),
+    db.prepare(DOMINANT_FILAMENT.replace("%FILTER%", "")),
+  ]);
+  const top = topFilaments((dominant?.results ?? []) as Parameters<typeof topFilaments>[0]);
+  return c.json(((rows?.results ?? []) as PartStatsRow[]).map((r) => toItem(r, top.get(r.id) ?? null)));
 });
 
 parts.get("/parts/:id", async (c) => {
@@ -77,7 +125,7 @@ parts.get("/parts/:id", async (c) => {
   if (!part) return c.json({ error: "Part not found" }, 404);
   if (part.merged_into) return c.json({ mergedInto: part.merged_into }, 409);
 
-  const [stats, materials, history] = await db.batch([
+  const [stats, materials, history, dominant] = await db.batch([
     db.prepare(`${PART_STATS} WHERE pt.id = ? GROUP BY pt.id`).bind(id),
     db
       .prepare(
@@ -96,7 +144,9 @@ parts.get("/parts/:id", async (c) => {
          WHERE jp.part_id = ? GROUP BY j.id ORDER BY j.started_at DESC LIMIT 200`,
       )
       .bind(id),
+    db.prepare(DOMINANT_FILAMENT.replace("%FILTER%", "AND jp.part_id = ?")).bind(id),
   ]);
+  const top = topFilaments((dominant?.results ?? []) as Parameters<typeof topFilaments>[0]).get(id) ?? null;
 
   const body: PartDetail = {
     part: { id: part.id, name: part.name, notes: part.notes, createdAt: part.created_at },
@@ -112,6 +162,7 @@ parts.get("/parts/:id", async (c) => {
           last_printed_at: null,
           materials: null,
         } as PartStatsRow),
+      top,
     ),
     materials: ((materials?.results ?? []) as Array<Record<string, unknown>>).map((r) => ({
       material: r.material as string | null,

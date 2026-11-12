@@ -29,6 +29,10 @@ const router = createBrowserRouter([
         path: "analytics",
         lazy: async () => ({ Component: (await import("./pages/AnalyticsPage.tsx")).AnalyticsPage }),
       },
+      {
+        path: "utilization",
+        lazy: async () => ({ Component: (await import("./pages/UtilizationPage.tsx")).UtilizationPage }),
+      },
       // The 3MF parser loads only with the queue.
       {
         path: "queue",

@@ -105,6 +105,11 @@ export interface PartListItem {
   wasteG: number | null;
   lastPrintedAt: number | null;
   materials: string[];
+  /**
+   * Most used filament: each printed part counts under the filament that supplied most of its
+   * grams; share is that material's fraction of printed parts. Null before any finished print.
+   */
+  topFilament: { material: string; color: string | null; count: number; share: number } | null;
 }
 
 export interface PartDetail {
@@ -257,3 +262,10 @@ export interface QueueItem {
 export type LiveMessage =
   | { type: "snapshot"; states: PrinterLiveState[] }
   | { type: "states"; states: PrinterLiveState[] };
+
+export interface UtilizationResponse {
+  range: { from: number; to: number };
+  printers: Array<{ serial: string; name: string; model: string | null; createdAt: number }>;
+  /** Busy time per job, clipped to the range; a job still printing runs until now. */
+  intervals: Array<{ serial: string; start: number; end: number }>;
+}

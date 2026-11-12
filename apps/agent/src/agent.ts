@@ -126,7 +126,8 @@ export class Agent {
             gcodeFile: output.job.gcodeFile,
             startedAt: output.job.startedAt,
           };
-          this.deps.store.requestAnalysis(request, at + (this.deps.analysisDelayMs ?? 20_000));
+          // Agent clock, not the report time: replays run sessions faster than real time.
+          this.deps.store.requestAnalysis(request, this.now() + (this.deps.analysisDelayMs ?? 20_000));
         }
       } else {
         this.deps.log.info("job ended", { serial, jobId: output.job.jobId, status: output.event.status });
