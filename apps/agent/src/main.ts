@@ -8,7 +8,7 @@ import { HttpCloudSender } from "./cloud.ts";
 import { AGENT_VERSION, type AgentConfig, loadConfig } from "./config.ts";
 import { FtpsFetcher } from "./fetchers/ftps.ts";
 import { LocalDirFetcher } from "./fetchers/localDir.ts";
-import { errorMessage, log } from "./log.ts";
+import { errorMessage, log, logToFile } from "./log.ts";
 import { normalizeReport } from "./report.ts";
 import { LocalMqttSource } from "./sources/localMqtt.ts";
 import { ReplaySource } from "./sources/replay.ts";
@@ -17,7 +17,8 @@ import { AgentStore } from "./store.ts";
 const USAGE = `bambu-fleet-agent ${AGENT_VERSION}
 
 Usage:
-  agent run     [--config agent.yaml]                 Follow printers and forward to the dashboard
+  agent run     [--config agent.yaml] [--log-file <path>]
+                                                      Follow printers and forward to the dashboard
   agent probe   [--config agent.yaml]                 Check MQTT and FTPS access for each printer
   agent record  --serial <sn> --out <file.jsonl> [--minutes 60] [--config agent.yaml]
                                                       Record raw MQTT reports for replay/fixtures
@@ -37,11 +38,22 @@ const { positionals, values } = parseArgs({
     speed: { type: "string", default: "1" },
     cloud: { type: "string" },
     key: { type: "string" },
+    "log-file": { type: "string" },
     help: { type: "boolean", short: "h" },
   },
 });
 
 const command = positionals[0] ?? "run";
+
+const logFile = values["log-file"] ?? process.env.AGENT_LOG_FILE;
+if (logFile) {
+  logToFile(resolve(logFile));
+  // Without a console, crashes would vanish: record them before exiting as Node would.
+  process.on("uncaughtException", (err) => {
+    log.error("uncaught exception", { error: errorMessage(err), stack: err.stack });
+    process.exit(1);
+  });
+}
 
 function config(): AgentConfig {
   const path = resolve(values.config as string);

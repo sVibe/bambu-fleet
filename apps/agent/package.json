@@ -6,6 +6,7 @@
   "description": "LAN agent: reads Bambu printers over local MQTT/FTPS and forwards jobs and live state to the cloud dashboard.",
   "scripts": {
     "start": "node src/main.ts run",
+    "service": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows/agent-service.ps1",
     "replay:demo": "node scripts/make-demo-fixtures.ts && node src/main.ts replay fixtures/demo/session.jsonl --files fixtures/demo/files",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"

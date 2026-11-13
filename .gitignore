@@ -9,3 +9,4 @@ apps/agent/agent.yaml
 coverage/
 worker-configuration.d.ts.bak
 apps/agent/fixtures/demo/
+apps/agent/logs/

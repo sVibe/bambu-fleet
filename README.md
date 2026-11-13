@@ -122,9 +122,28 @@ cd apps/agent && cp agent.example.yaml agent.yaml
    node src/main.ts run
    ```
 
-   or with Docker (`docker compose up -d` in `apps/agent`).
+   or with Docker (`docker compose up -d` in `apps/agent`), or in the background on Windows (below).
 5. **Keep one local MQTT client per printer.** Don't also run Home Assistant's Bambu integration in local mode
    against the same printers, because P1/A1 printers limit simultaneous connections.
+
+### In the background on Windows
+
+`apps/agent/scripts/windows/agent-service.ps1` registers a Task Scheduler task that starts the agent hidden when
+you log in and starts it again if it exits. It needs no administrator rights. Logs go to `apps/agent/logs/agent.log`,
+rotated at 10 MB. From PowerShell in `apps/agent`:
+
+```powershell
+pnpm run service install    # register the task and start the agent now
+pnpm run service status     # task state, agent PID and the last log lines
+pnpm run service logs       # follow the log (Ctrl+C stops following, not the agent)
+pnpm run service update     # stop, git pull, pnpm install, start
+pnpm run service restart    # also: start, stop, uninstall
+```
+
+- Close any PowerShell window still running `pnpm start` first; the script warns if it finds one.
+- The agent runs while you're logged in. Set the PC to never sleep, and use Windows automatic sign-in if it should
+  come back by itself after a reboot.
+- The task uses the `node.exe` found at install time. Run `install` again after moving or upgrading Node.
 
 Other agent commands:
 
