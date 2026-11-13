@@ -19,8 +19,9 @@
     run        Used by the task itself: run the agent and restart it whenever it exits
 
 .EXAMPLE
-  pnpm run service install
   powershell -NoProfile -ExecutionPolicy Bypass -File apps\agent\scripts\windows\agent-service.ps1 status
+  # Shortcut for your PowerShell profile ($PROFILE), then: fleet status / fleet logs / fleet update
+  function fleet { powershell -NoProfile -ExecutionPolicy Bypass -File "C:\path\to\repo\apps\agent\scripts\windows\agent-service.ps1" @args }
 #>
 param(
   [Parameter(Position = 0)]
@@ -61,7 +62,7 @@ function Get-ManualAgents {
 function Get-AgentTask { Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue }
 
 function Assert-Installed {
-  if (-not (Get-AgentTask)) { throw "The '$TaskName' task is not installed. Run: pnpm run service install" }
+  if (-not (Get-AgentTask)) { throw "The '$TaskName' task is not installed. Run this script with: install" }
 }
 
 function Warn-ManualAgents {
@@ -85,7 +86,7 @@ function Start-Agent {
   Start-Sleep -Seconds 3
   $agent = @(Get-ServiceAgents)
   if ($agent.Count -gt 0) { Write-Host "Agent running (PID $($agent[0].ProcessId)). Log: $LogFile" }
-  else { Write-Warning "The task started but the agent isn't running yet. Check: pnpm run service status" }
+  else { Write-Warning "The task started but the agent isn't running yet. Check this script's status command." }
 }
 
 function Install-Agent {
@@ -141,8 +142,12 @@ function Update-Agent {
   try {
     git -C $RepoDir pull --ff-only
     if ($LASTEXITCODE -ne 0) { throw "git pull failed" }
+    # Use the pnpm version the repository pins, whatever pnpm is installed globally (a newer one refuses to run).
+    $pinned = ((Get-Content (Join-Path $RepoDir "package.json") -Raw | ConvertFrom-Json).packageManager -split "\+")[0]
     Push-Location $RepoDir
-    try { pnpm install --frozen-lockfile } finally { Pop-Location }
+    try {
+      if ($pinned) { npx --yes $pinned install --frozen-lockfile } else { pnpm install --frozen-lockfile }
+    } finally { Pop-Location }
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
   } finally {
     # Start again even if the update failed, so the fleet keeps reporting on the old version.

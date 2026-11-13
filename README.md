@@ -130,15 +130,24 @@ cd apps/agent && cp agent.example.yaml agent.yaml
 
 `apps/agent/scripts/windows/agent-service.ps1` registers a Task Scheduler task that starts the agent hidden when
 you log in and starts it again if it exits. It needs no administrator rights. Logs go to `apps/agent/logs/agent.log`,
-rotated at 10 MB. From PowerShell in `apps/agent`:
+rotated at 10 MB. The script is plain PowerShell, so it doesn't depend on the installed pnpm version. Add a
+shortcut to your PowerShell profile (`notepad $PROFILE`), with the path to your checkout:
 
 ```powershell
-pnpm run service install    # register the task and start the agent now
-pnpm run service status     # task state, agent PID and the last log lines
-pnpm run service logs       # follow the log (Ctrl+C stops following, not the agent)
-pnpm run service update     # stop, git pull, pnpm install, start
-pnpm run service restart    # also: start, stop, uninstall
+function fleet { powershell -NoProfile -ExecutionPolicy Bypass -File "C:\path\to\repo\apps\agent\scripts\windows\agent-service.ps1" @args }
 ```
+
+Then, from any folder:
+
+```powershell
+fleet install    # register the task and start the agent now
+fleet status     # task state, agent PID and the last log lines
+fleet logs       # follow the log (Ctrl+C stops following, not the agent)
+fleet update     # stop, git pull, install dependencies with the pinned pnpm (via npx), start
+fleet restart    # also: start, stop, uninstall
+```
+
+`pnpm run service <command>` in `apps/agent` does the same when the installed pnpm matches `packageManager`.
 
 - Close any PowerShell window still running `pnpm start` first; the script warns if it finds one.
 - The agent runs while you're logged in. Set the PC to never sleep, and use Windows automatic sign-in if it should
