@@ -78,7 +78,8 @@ function Dashboard({ data }: { data: UtilizationResponse }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {/* An odd last tile spans the row on two-column screens instead of sitting alone. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2">
         <StatTile label="Fleet utilization" value={percent(f.utilization)} note="of available printer time" />
         <StatTile
           label="Busy per printer"
@@ -184,10 +185,11 @@ function HourHeatmap({
         </div>
       ) : (
         <>
-          <div className="mt-4 overflow-x-auto">
+          {/* All 24 hours fit the width, so phones see the whole day without scrolling sideways. */}
+          <div className="mt-4">
             <div
-              className="grid min-w-[640px] items-center gap-[2px]"
-              style={{ gridTemplateColumns: "minmax(96px, 140px) repeat(24, minmax(18px, 1fr))" }}
+              className="grid items-center gap-px sm:gap-[2px]"
+              style={{ gridTemplateColumns: "fit-content(140px) repeat(24, minmax(0, 1fr))" }}
             >
               <div />
               {Array.from({ length: 24 }, (_, h) => (
@@ -208,7 +210,7 @@ function HourHeatmap({
                   {hourLabel(hover.h)}–{hourLabel((hover.h + 1) % 24)}
                 </>
               ) : (
-                "Hover a cell for its value."
+                "Hover or tap a cell for its value."
               )}
             </div>
             <div className="flex items-center gap-1.5" role="img" aria-label="Colour scale from 0% to 100%">
@@ -247,7 +249,9 @@ function HeatRow({
             aria-label={`${row.label} ${hourLabel(h)}: ${percent(r)} busy`}
             title={`${row.label} ${hourLabel(h)}: ${percent(r)}`}
             onMouseEnter={() => onHover(h, r)}
-            className="h-6 rounded-[3px] ring-inset hover:ring-2 hover:ring-ink"
+            // Touch screens have no hover: a tap shows the value. The table view serves keyboards.
+            onPointerDown={() => onHover(h, r)}
+            className="h-5 rounded-[2px] ring-inset hover:ring-2 hover:ring-ink sm:h-6 sm:rounded-[3px]"
             style={{ background: cellColor(r) }}
           />
         );
@@ -327,12 +331,12 @@ function PrinterTable({
   return (
     <Card className="overflow-x-auto">
       <h2 className="px-4 pt-4 font-semibold">By printer</h2>
-      <table className="mt-2 w-full min-w-[620px] text-sm">
+      <table className="mt-2 w-full text-sm sm:min-w-[620px]">
         <thead className="border-b border-hairline">
           <tr>
             <Th>Printer</Th>
-            <Th className="text-right">Jobs</Th>
-            <Th className="text-right">Printing</Th>
+            <Th className="hidden text-right sm:table-cell">Jobs</Th>
+            <Th className="hidden text-right sm:table-cell">Printing</Th>
             <Th className="text-right">Per day</Th>
             <Th className="w-2/5">Utilization</Th>
           </tr>
@@ -347,9 +351,12 @@ function PrinterTable({
                     {info?.name ?? p.serial}
                   </Link>
                   {info?.model && <span className="ml-2 text-xs text-muted">{info.model}</span>}
+                  <div className="text-xs text-muted sm:hidden">
+                    {p.jobs} jobs · {hours(p.busyH)}
+                  </div>
                 </Td>
-                <Td className="text-right">{p.jobs}</Td>
-                <Td className="text-right text-ink-2">{hours(p.busyH)}</Td>
+                <Td className="hidden text-right sm:table-cell">{p.jobs}</Td>
+                <Td className="hidden text-right text-ink-2 sm:table-cell">{hours(p.busyH)}</Td>
                 <Td className="text-right text-ink-2">
                   {p.hoursPerDay !== null ? `${p.hoursPerDay.toFixed(1)} h` : "–"}
                 </Td>

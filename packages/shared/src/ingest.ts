@@ -119,6 +119,15 @@ export const ingestBatchSchema = z.object({
 });
 export type IngestBatch = z.infer<typeof ingestBatchSchema>;
 
+/** Response of `POST /ingest/state`. */
+export interface IngestStateResponse {
+  accepted: number;
+  /** Serials this agent sent but doesn't own: another agent registered those printers. */
+  rejected: string[];
+  /** The server's clock, so the agent can warn when its own clock is off. */
+  serverNow: number;
+}
+
 export const ingestStateSchema = z.object({
   states: z.array(printerLiveStateSchema).max(200),
 });

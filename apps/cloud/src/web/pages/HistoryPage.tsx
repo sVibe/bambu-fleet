@@ -128,16 +128,17 @@ export function HistoryPage() {
       )}
       {items.length > 0 && (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          {/* Phones keep job and status; the rest moves under the job name. */}
+          <table className="w-full text-sm md:min-w-[760px]">
             <thead className="border-b border-hairline">
               <tr>
                 <Th>Job</Th>
-                <Th>Printer</Th>
+                <Th className="hidden md:table-cell">Printer</Th>
                 <Th>Status</Th>
-                <Th>Started</Th>
-                <Th className="text-right">Duration</Th>
-                <Th className="text-right">Filament</Th>
-                <Th>Materials</Th>
+                <Th className="hidden md:table-cell">Started</Th>
+                <Th className="hidden text-right md:table-cell">Duration</Th>
+                <Th className="hidden text-right md:table-cell">Filament</Th>
+                <Th className="hidden md:table-cell">Materials</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
@@ -148,7 +149,7 @@ export function HistoryPage() {
                       to={`/jobs/${j.id}`}
                       className="flex items-center gap-3 font-medium hover:underline"
                     >
-                      <Thumb src={j.thumbUrl} alt="" size={36} />
+                      <Thumb src={j.thumbUrl} alt="" size={72} />
                       <span className="min-w-0">
                         <span className="block truncate">{j.name}</span>
                         <span className="text-xs font-normal text-muted">
@@ -156,19 +157,30 @@ export function HistoryPage() {
                             ? `${j.partCount} ${j.partCount === 1 ? "part" : "parts"}`
                             : "no part data"}
                         </span>
+                        <span className="tabular block text-xs font-normal whitespace-nowrap text-muted md:hidden">
+                          {j.printerName}
+                          {j.actualWeightG !== null ? ` · ${grams(j.actualWeightG)}` : ""}
+                        </span>
+                        <span className="tabular block text-xs font-normal whitespace-nowrap text-muted md:hidden">
+                          {dateTime(j.startedAt)}
+                        </span>
                       </span>
                     </Link>
                   </Td>
-                  <Td className="text-ink-2">{j.printerName}</Td>
+                  <Td className="hidden text-ink-2 md:table-cell">{j.printerName}</Td>
                   <Td>
                     <JobStatusBadge status={j.status} />
                   </Td>
-                  <Td className="tabular whitespace-nowrap text-ink-2">{dateTime(j.startedAt)}</Td>
-                  <Td className="tabular text-right text-ink-2">{duration(j.durationS)}</Td>
-                  <Td className="tabular text-right">
+                  <Td className="tabular hidden whitespace-nowrap text-ink-2 md:table-cell">
+                    {dateTime(j.startedAt)}
+                  </Td>
+                  <Td className="tabular hidden text-right text-ink-2 md:table-cell">
+                    {duration(j.durationS)}
+                  </Td>
+                  <Td className="tabular hidden text-right md:table-cell">
                     {grams(j.actualWeightG ?? (j.status === "printing" ? j.estWeightG : null))}
                   </Td>
-                  <Td>
+                  <Td className="hidden md:table-cell">
                     <FilamentChips filaments={j.filaments} />
                   </Td>
                 </tr>

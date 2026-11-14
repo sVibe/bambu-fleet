@@ -23,7 +23,8 @@ export class FleetLive extends DurableObject<Env> {
     const changed: PrinterLiveState[] = [];
     for (const s of states) {
       const prev = map.get(s.serial);
-      if (prev && prev.updatedAt > s.updatedAt) continue;
+      // Order by the server's receive time: an agent clock that was once ahead must not block updates.
+      if (prev && (prev.receivedAt ?? 0) > (s.receivedAt ?? 0)) continue;
       map.set(s.serial, s);
       changed.push(s);
     }
@@ -33,7 +34,7 @@ export class FleetLive extends DurableObject<Env> {
     for (let i = 0; i < entries.length; i += 128) {
       await this.ctx.storage.put(Object.fromEntries(entries.slice(i, i + 128)));
     }
-    this.broadcast({ type: "states", states: changed });
+    this.broadcast({ type: "states", states: changed, serverNow: Date.now() });
   }
 
   async snapshot(): Promise<PrinterLiveState[]> {
@@ -52,7 +53,7 @@ export class FleetLive extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server);
-    const message: LiveMessage = { type: "snapshot", states: await this.snapshot() };
+    const message: LiveMessage = { type: "snapshot", states: await this.snapshot(), serverNow: Date.now() };
     server.send(JSON.stringify(message));
     return new Response(null, { status: 101, webSocket: client });
   }

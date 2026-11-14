@@ -4,10 +4,18 @@ import type { LiveMessage } from "../api-types.ts";
 
 export type LiveStatus = "connecting" | "live" | "offline";
 
-/** Live printer states pushed over `/api/live`, reconnecting with backoff. */
-export function useLiveStates(): { states: Map<string, PrinterLiveState>; status: LiveStatus } {
+/**
+ * Live printer states pushed over `/api/live`, reconnecting with backoff. `clockOffset` is the server's
+ * clock minus this browser's, so staleness can be judged on the server's time.
+ */
+export function useLiveStates(): {
+  states: Map<string, PrinterLiveState>;
+  status: LiveStatus;
+  clockOffset: number;
+} {
   const [states, setStates] = useState(() => new Map<string, PrinterLiveState>());
   const [status, setStatus] = useState<LiveStatus>("connecting");
+  const [clockOffset, setClockOffset] = useState(0);
 
   useEffect(() => {
     let socket: WebSocket | null = null;
@@ -28,6 +36,7 @@ export function useLiveStates(): { states: Map<string, PrinterLiveState>; status
       socket.onmessage = (event) => {
         if (typeof event.data !== "string" || event.data === "pong") return;
         const message = JSON.parse(event.data) as LiveMessage;
+        if (typeof message.serverNow === "number") setClockOffset(message.serverNow - Date.now());
         setStates((prev) => {
           const next = message.type === "snapshot" ? new Map<string, PrinterLiveState>() : new Map(prev);
           for (const s of message.states) next.set(s.serial, s);
@@ -51,7 +60,7 @@ export function useLiveStates(): { states: Map<string, PrinterLiveState>; status
     };
   }, []);
 
-  return { states, status };
+  return { states, status, clockOffset };
 }
 
 /** Re-render periodically so relative times and staleness stay current. */

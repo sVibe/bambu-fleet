@@ -264,9 +264,23 @@ export interface QueueItem {
 }
 
 /** Messages on the `/api/live` WebSocket. */
+/**
+ * Bambu's HMS (16 hex digits) and print_error (8 hex digits) texts. Each code maps a printer serial
+ * prefix to its text; "" is the default, and a prefix appears only where that model's text differs.
+ */
+export interface ErrorTextTable {
+  /** Bambu's version of the tables, e.g. 202611121903; 0 before the first download. */
+  ver: number;
+  fetchedAt: number;
+  prefixes: string[];
+  hms: Record<string, Record<string, string>>;
+  error: Record<string, Record<string, string>>;
+}
+
+/** Pushed over `/api/live`. `serverNow` lets the browser correct for its own clock being off. */
 export type LiveMessage =
-  | { type: "snapshot"; states: PrinterLiveState[] }
-  | { type: "states"; states: PrinterLiveState[] };
+  | { type: "snapshot"; states: PrinterLiveState[]; serverNow: number }
+  | { type: "states"; states: PrinterLiveState[]; serverNow: number };
 
 export interface UtilizationResponse {
   range: { from: number; to: number };

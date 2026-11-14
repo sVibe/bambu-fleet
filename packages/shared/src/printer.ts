@@ -72,13 +72,27 @@ export const printerLiveStateSchema = z.object({
   ams: z.array(amsUnitSchema),
   externalSpools: z.array(trayStateSchema),
   hms: z.array(hmsEntrySchema),
-  /** Epoch milliseconds when the agent last received data from the printer. */
+  /** Epoch milliseconds when the agent last received data from the printer, by the agent's clock. */
   updatedAt: z.number(),
+  /**
+   * Epoch milliseconds when the dashboard received this state, by the server's clock. Set by the
+   * Worker, so freshness doesn't depend on the agent machine's clock being right.
+   */
+  receivedAt: z.number().optional(),
 });
 export type PrinterLiveState = z.infer<typeof printerLiveStateSchema>;
+export type HmsEntry = z.infer<typeof hmsEntrySchema>;
 
 /** Live state older than this is shown as offline. */
 export const LIVE_STALE_MS = 2 * 60 * 1000;
+
+/** When the dashboard last heard about this printer: server receive time, else the agent's stamp. */
+export const liveSeenAt = (s: PrinterLiveState): number => s.receivedAt ?? s.updatedAt;
+
+/** Online means the agent says the printer is connected, and said so within LIVE_STALE_MS. */
+export function isLiveOnline(s: PrinterLiveState | null | undefined, now: number): boolean {
+  return !!s && s.online && now - liveSeenAt(s) < LIVE_STALE_MS;
+}
 
 /**
  * `print_error` value the printer reports when a user cancels a print (HMS 0300-400C).

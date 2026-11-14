@@ -33,5 +33,7 @@
     "BOOTSTRAP_ADMIN_EMAIL": "svp@scanomat.dk",
     "DEFAULT_ROLE": "viewer"
   },
+  // Mondays 03:17 UTC: refresh Bambu's HMS and print-error texts (see src/worker/errorText.ts).
+  "triggers": { "crons": ["17 3 * * MON"] },
   "observability": { "enabled": true }
 }

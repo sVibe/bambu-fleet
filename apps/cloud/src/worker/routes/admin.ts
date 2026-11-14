@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { AgentRow, AuditRow, UserRow } from "../../api-types.ts";
 import { audit, requireRole, sha256Hex } from "../auth.ts";
 import type { AppEnv } from "../env.ts";
+import { refreshErrorText } from "../errorText.ts";
 import { intParam } from "../util.ts";
 
 export const admin = new Hono<AppEnv>();
@@ -124,4 +125,11 @@ admin.get("/audit", async (c) => {
     details: r.details as string | null,
   }));
   return c.json(body);
+});
+
+/** Fetch Bambu's error texts now instead of waiting for the weekly cron. */
+admin.post("/error-text/refresh", async (c) => {
+  const result = await refreshErrorText(c.env);
+  await audit(c, "error-text.refresh", "settings", "error-text", result);
+  return c.json(result, result.ok ? 200 : 502);
 });

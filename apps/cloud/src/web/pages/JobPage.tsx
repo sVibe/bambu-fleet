@@ -1,7 +1,7 @@
-import { formatPrintError } from "@fleet/shared";
 import { Link, useParams } from "react-router";
 import type { JobDetail } from "../../api-types.ts";
 import { useJob } from "../api.ts";
+import { PrintError } from "../components/Hms.tsx";
 import {
   Card,
   ErrorState,
@@ -44,7 +44,8 @@ export function JobPage() {
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <div className="space-y-4">
+        {/* min-w-0: without it a wide table stretches the grid and the whole page scrolls sideways. */}
+        <div className="min-w-0 space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Fact
               label={stopped ? "Filament used (est.)" : "Filament"}
@@ -69,11 +70,8 @@ export function JobPage() {
 
           {j.errorCode ? (
             <Card className="p-4 text-sm">
-              <span className="font-medium">Printer error {formatPrintError(j.errorCode)}</span>
-              <span className="text-ink-2">
-                {" "}
-                – look the code up on the Bambu Lab wiki (HMS / error codes).
-              </span>
+              <span className="font-medium">Printer error: </span>
+              <PrintError code={j.errorCode} serial={j.printerSerial} />
             </Card>
           ) : null}
 
@@ -81,7 +79,7 @@ export function JobPage() {
           <Parts job={j} />
         </div>
 
-        <aside className="space-y-4">
+        <aside className="min-w-0 space-y-4">
           <Card className="p-3">
             <Thumb src={j.thumbUrl} alt={`Plate preview of ${j.name}`} size={254} />
           </Card>
@@ -140,17 +138,17 @@ function Filaments({ job }: { job: JobDetail }) {
       <table className="mt-2 w-full text-sm">
         <thead className="border-b border-hairline">
           <tr>
-            <Th>#</Th>
+            <Th className="hidden sm:table-cell">#</Th>
             <Th>Material</Th>
             <Th className="text-right">Planned</Th>
-            <Th className="text-right">Length</Th>
+            <Th className="hidden text-right sm:table-cell">Length</Th>
             <Th className="text-right">Of which waste</Th>
           </tr>
         </thead>
         <tbody className="divide-y divide-hairline">
           {job.filaments.map((f) => (
             <tr key={f.idx}>
-              <Td className="text-muted">{f.idx}</Td>
+              <Td className="hidden text-muted sm:table-cell">{f.idx}</Td>
               <Td>
                 <span className="inline-flex items-center gap-2">
                   <Swatch color={f.color} size={14} />
@@ -159,7 +157,9 @@ function Filaments({ job }: { job: JobDetail }) {
                 </span>
               </Td>
               <Td className="tabular text-right">{grams(f.weightG)}</Td>
-              <Td className="tabular text-right text-ink-2">{f.lengthM !== null ? `${f.lengthM} m` : "–"}</Td>
+              <Td className="tabular hidden text-right text-ink-2 sm:table-cell">
+                {f.lengthM !== null ? `${f.lengthM} m` : "–"}
+              </Td>
               <Td className="tabular text-right text-ink-2">{grams(f.wasteG)}</Td>
             </tr>
           ))}
@@ -172,6 +172,13 @@ function Filaments({ job }: { job: JobDetail }) {
 function Parts({ job }: { job: JobDetail }) {
   if (job.parts.length === 0) return null;
   const colorOf = new Map(job.filaments.map((f) => [String(f.idx), f]));
+  const split = (perFilament: Record<string, number>) =>
+    Object.entries(perFilament).map(([idx, g]) => (
+      <span key={idx} className="inline-flex items-center gap-1 text-xs text-ink-2">
+        <Swatch color={colorOf.get(idx)?.color ?? null} size={10} />
+        {colorOf.get(idx)?.material ?? `#${idx}`} {grams(g)}
+      </span>
+    ));
   return (
     <Card className="overflow-x-auto">
       <div className="px-4 pt-4">
@@ -182,7 +189,7 @@ function Parts({ job }: { job: JobDetail }) {
         <thead className="border-b border-hairline">
           <tr>
             <Th>Part</Th>
-            <Th>Filament split</Th>
+            <Th className="hidden sm:table-cell">Filament split</Th>
             <Th className="text-right">Part grams</Th>
             <Th className="text-right">+ waste share</Th>
           </tr>
@@ -198,16 +205,11 @@ function Parts({ job }: { job: JobDetail }) {
                   <span className="ml-2 text-xs text-muted">{p.objectName}</span>
                 )}
                 {p.skipped && <span className="ml-2 text-xs">(skipped)</span>}
+                {/* On phones the split goes under the name instead of in its own column. */}
+                <span className="mt-1 flex flex-wrap gap-2 sm:hidden">{split(p.perFilament)}</span>
               </Td>
-              <Td>
-                <span className="flex flex-wrap gap-2">
-                  {Object.entries(p.perFilament).map(([idx, g]) => (
-                    <span key={idx} className="inline-flex items-center gap-1 text-xs text-ink-2">
-                      <Swatch color={colorOf.get(idx)?.color ?? null} size={10} />
-                      {colorOf.get(idx)?.material ?? `#${idx}`} {grams(g)}
-                    </span>
-                  ))}
-                </span>
+              <Td className="hidden sm:table-cell">
+                <span className="flex flex-wrap gap-2">{split(p.perFilament)}</span>
               </Td>
               <Td className="tabular text-right">{grams(p.weightG)}</Td>
               <Td className="tabular text-right text-ink-2">{grams(p.wasteShareG)}</Td>

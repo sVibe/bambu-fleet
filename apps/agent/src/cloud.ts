@@ -2,7 +2,8 @@ import type { IngestBatch, IngestEvent, PrinterLiveState } from "@fleet/shared";
 import { AGENT_VERSION } from "./config.ts";
 import { errorMessage } from "./log.ts";
 
-export type SendResult = { ok: true } | { ok: false; status: number; error: string };
+/** `body` is the parsed JSON response, when there is one. */
+export type SendResult = { ok: true; body?: unknown } | { ok: false; status: number; error: string };
 
 export interface CloudSender {
   sendEvents(events: IngestEvent[]): Promise<SendResult>;
@@ -52,7 +53,7 @@ export class HttpCloudSender implements CloudSender {
         signal: AbortSignal.timeout(20_000),
         redirect: "manual",
       });
-      if (res.ok) return { ok: true };
+      if (res.ok) return { ok: true, body: await res.json().catch(() => undefined) };
       // A redirect usually means Cloudflare Access is asking for a login: missing service token.
       const text =
         res.status >= 300 && res.status < 400 ? "redirected (check Access service token)" : await res.text();

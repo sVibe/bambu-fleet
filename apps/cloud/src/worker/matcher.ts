@@ -1,6 +1,6 @@
 import {
   type FilamentUsage,
-  LIVE_STALE_MS,
+  isLiveOnline,
   modelForPrinterModelId,
   normalizeModel,
   type PrinterLiveState,
@@ -83,7 +83,7 @@ export function suggestSlots(filaments: FilamentUsage[], live: PrinterLiveState 
 }
 
 function readinessOf(live: PrinterLiveState | null, now: number): PrinterReadiness {
-  if (!live?.online || now - live.updatedAt > LIVE_STALE_MS) return "offline";
+  if (!live || !isLiveOnline(live, now)) return "offline";
   switch (live.gcodeState) {
     case "IDLE":
       return "ready";

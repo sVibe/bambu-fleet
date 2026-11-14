@@ -34,16 +34,17 @@ export function PartsPage() {
       )}
       {rows.length > 0 && (
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          {/* Phones keep part, count and average; the filament moves under the name. */}
+          <table className="w-full text-sm md:min-w-[720px]">
             <thead className="border-b border-hairline">
               <tr>
                 <Th>Part</Th>
                 <Th className="text-right">Printed</Th>
-                <Th className="text-right">Success</Th>
+                <Th className="hidden text-right md:table-cell">Success</Th>
                 <Th className="text-right">Avg g / part</Th>
-                <Th className="text-right">Total</Th>
-                <Th>Most used filament</Th>
-                <Th>Last printed</Th>
+                <Th className="hidden text-right md:table-cell">Total</Th>
+                <Th className="hidden md:table-cell">Most used filament</Th>
+                <Th className="hidden md:table-cell">Last printed</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
@@ -54,26 +55,33 @@ export function PartsPage() {
                     <Td>
                       <div className="flex items-center gap-3">
                         <PartImage image={p.image} alt="" className="size-10 shrink-0 p-1" />
-                        <div>
+                        <div className="min-w-0">
                           <Link to={`/parts/${p.id}`} className="font-medium hover:underline">
                             {p.name}
                           </Link>
                           <span className="ml-2 text-xs text-muted">
                             {p.jobs} {p.jobs === 1 ? "job" : "jobs"}
                           </span>
+                          {p.topFilament && (
+                            <span className="block text-xs text-muted md:hidden">
+                              Mostly {p.topFilament.material} · {grams(p.totalG)} total
+                            </span>
+                          )}
                         </div>
                       </div>
                     </Td>
                     <Td className="tabular text-right">{p.printedQty}</Td>
-                    <Td className="tabular text-right text-ink-2">
+                    <Td className="tabular hidden text-right text-ink-2 md:table-cell">
                       {attempts ? percent(p.printedQty / attempts) : "–"}
                     </Td>
                     <Td className="tabular text-right">{grams(p.avgG)}</Td>
-                    <Td className="tabular text-right text-ink-2">{grams(p.totalG)}</Td>
-                    <Td>
+                    <Td className="tabular hidden text-right text-ink-2 md:table-cell">{grams(p.totalG)}</Td>
+                    <Td className="hidden md:table-cell">
                       <TopFilament top={p.topFilament} materials={p.materials} />
                     </Td>
-                    <Td className="tabular whitespace-nowrap text-ink-2">{dateTime(p.lastPrintedAt)}</Td>
+                    <Td className="tabular hidden whitespace-nowrap text-ink-2 md:table-cell">
+                      {dateTime(p.lastPrintedAt)}
+                    </Td>
                   </tr>
                 );
               })}

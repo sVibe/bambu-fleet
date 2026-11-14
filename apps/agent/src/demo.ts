@@ -191,7 +191,8 @@ export function buildDemoSession(): { session: string; files: Record<string, Uin
       layer_num: 2,
       mc_percent: 38,
       mc_remaining_time: 27,
-      hms: [{ attr: 0x07008011, code: 0x00020002 }],
+      // A real code, so the dashboard can show its text: AMS A slot 1 has run out (HMS 0700_2000_0002_0001).
+      hms: [{ attr: 0x07002000, code: 0x00020001 }],
     }),
   });
   steps.push({

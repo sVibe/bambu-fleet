@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Me } from "../api-types.ts";
 import { requireUser } from "./auth.ts";
 import type { AppEnv, Env } from "./env.ts";
+import { refreshErrorText } from "./errorText.ts";
 import { ingest } from "./ingest.ts";
 import { admin } from "./routes/admin.ts";
 import { jobs } from "./routes/jobs.ts";
@@ -35,4 +36,13 @@ app.route("/api", api);
 
 export default {
   fetch: app.fetch,
+  /** Weekly cron (wrangler.jsonc): refresh Bambu's HMS and print-error texts. */
+  scheduled(_event, env, ctx) {
+    ctx.waitUntil(
+      refreshErrorText(env).then(
+        (result) => console.log("error text refresh", result),
+        (err) => console.error("error text refresh failed", err),
+      ),
+    );
+  },
 } satisfies ExportedHandler<Env>;

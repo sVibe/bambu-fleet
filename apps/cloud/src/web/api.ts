@@ -2,6 +2,7 @@ import { type QueryClient, useQuery } from "@tanstack/react-query";
 import type {
   AgentRow,
   AuditRow,
+  ErrorTextTable,
   JobDetail,
   JobListResponse,
   Me,
@@ -48,6 +49,16 @@ function qs(params: Record<string, string | number | null | undefined>): string 
 
 export const useMe = () =>
   useQuery({ queryKey: ["me"], queryFn: () => api<Me>("/api/me"), staleTime: 60_000 });
+
+/** Bambu's HMS and print-error texts; refreshed weekly on the server, so cache them for a while. */
+export const useErrorText = () =>
+  useQuery({
+    queryKey: ["error-text"],
+    queryFn: () => api<ErrorTextTable>("/api/error-text"),
+    staleTime: 60 * 60_000,
+    // Right after a deploy the server is still downloading them.
+    refetchInterval: (query) => (query.state.data?.ver === 0 ? 30_000 : false),
+  });
 
 export const usePrinters = () =>
   useQuery({

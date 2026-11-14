@@ -50,7 +50,7 @@ export function PartPage() {
                 ? `Plate preview of ${part.data.stats.image.jobName}, which includes ${part.data.part.name}`
                 : `Top view of ${part.data.part.name}`
             }
-            className="aspect-square w-full"
+            className="mx-auto aspect-square w-full max-w-48 sm:max-w-none"
           />
           <p className="mt-2 text-xs text-muted">
             {part.data.stats.image ? (
@@ -65,7 +65,7 @@ export function PartPage() {
             )}
           </p>
         </Card>
-        <div className="grid grid-cols-2 content-start gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-2 content-start gap-3 lg:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1">
           <StatTile label="Printed" value={stats.printedQty} note={`${stats.jobs} jobs`} />
           <StatTile
             label="Success"
@@ -108,13 +108,13 @@ export function PartPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card className="overflow-x-auto">
+        <Card className="min-w-0 overflow-x-auto">
           <h2 className="px-4 pt-4 font-semibold">Jobs</h2>
-          <table className="mt-2 w-full min-w-[560px] text-sm">
+          <table className="mt-2 w-full text-sm sm:min-w-[560px]">
             <thead className="border-b border-hairline">
               <tr>
                 <Th>Job</Th>
-                <Th>Printer</Th>
+                <Th className="hidden sm:table-cell">Printer</Th>
                 <Th>Status</Th>
                 <Th className="text-right">Qty</Th>
                 <Th className="text-right">Grams</Th>
@@ -127,9 +127,12 @@ export function PartPage() {
                     <Link to={`/jobs/${h.jobId}`} className="font-medium hover:underline">
                       {h.jobName}
                     </Link>
-                    <div className="tabular text-xs text-muted">{dateTime(h.startedAt)}</div>
+                    <div className="tabular text-xs text-muted">
+                      {dateTime(h.startedAt)}
+                      <span className="sm:hidden"> · {h.printerName}</span>
+                    </div>
                   </Td>
-                  <Td className="text-ink-2">{h.printerName}</Td>
+                  <Td className="hidden text-ink-2 sm:table-cell">{h.printerName}</Td>
                   <Td>
                     <JobStatusBadge status={h.status} />
                   </Td>

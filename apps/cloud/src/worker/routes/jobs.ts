@@ -1,6 +1,7 @@
 import { type AmsUnit, JOB_STATUSES, type JobStatus } from "@fleet/shared";
 import { Hono } from "hono";
 import type {
+  ErrorTextTable,
   FilamentChip,
   JobDetail,
   JobListItem,
@@ -8,6 +9,7 @@ import type {
   PrinterSummary,
 } from "../../api-types.ts";
 import type { AppEnv } from "../env.ts";
+import { ERROR_TEXT_KEY, refreshErrorTextIfNeeded } from "../errorText.ts";
 import { fleetLive } from "../live.ts";
 import { intParam, optionalInt, parseJson, partImageKey, thumbUrl } from "../util.ts";
 
@@ -220,6 +222,26 @@ jobs.get("/thumbs/:jobId/parts/:identifyId{[0-9]+}", async (c) => {
   if (!object) return c.notFound();
   return new Response(object.body, {
     headers: { "content-type": "image/png", "cache-control": "private, max-age=86400" },
+  });
+});
+
+/** Error texts for the browser to resolve codes with; fetched from Bambu weekly by the cron. */
+jobs.get("/error-text", async (c) => {
+  const object = await c.env.FILES.get(ERROR_TEXT_KEY);
+  // First use after deploy, or a new model family: download in the background meanwhile.
+  await refreshErrorTextIfNeeded(c.env, object, (p) => c.executionCtx.waitUntil(p));
+  if (!object) {
+    const empty: ErrorTextTable = { ver: 0, fetchedAt: 0, prefixes: [], hms: {}, error: {} };
+    return c.json(empty, 200, { "cache-control": "no-store" });
+  }
+  if (c.req.header("if-none-match") === object.httpEtag) return c.body(null, 304);
+  return new Response(object.body, {
+    headers: {
+      "content-type": "application/json",
+      etag: object.httpEtag,
+      // Revalidate every time (cheap with the ETag), so a refresh shows up straight away.
+      "cache-control": "private, no-cache",
+    },
   });
 });
 

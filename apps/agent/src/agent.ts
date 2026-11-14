@@ -1,5 +1,10 @@
 import { createReadStream } from "node:fs";
-import { type IngestEvent, MAX_EVENTS_PER_BATCH, type PrinterLiveState } from "@fleet/shared";
+import {
+  type IngestEvent,
+  type IngestStateResponse,
+  MAX_EVENTS_PER_BATCH,
+  type PrinterLiveState,
+} from "@fleet/shared";
 import { analyzeThreeMf, plateIndexFromPath, selectPlate } from "@fleet/threemf";
 import type { CloudSender } from "./cloud.ts";
 import type { JobFileFetcher } from "./fetchers/types.ts";
@@ -35,6 +40,10 @@ export interface AgentDeps {
 /** Retry schedule for a job file that isn't on the printer's storage yet. */
 const ANALYSIS_BACKOFF_MS = [60_000, 3 * 60_000, 10 * 60_000, 30 * 60_000];
 const HEARTBEAT_MS = 30_000;
+/** Clock difference from the dashboard above which the agent warns. */
+const CLOCK_SKEW_WARN_MS = 60_000;
+/** Repeat a recurring warning at most this often. */
+const WARN_EVERY_MS = 10 * 60_000;
 
 /** Wires a printer source to the job tracker, the analysis queue and the cloud uploader. */
 export class Agent {
@@ -47,6 +56,7 @@ export class Agent {
   private readonly dirty = new Set<string>();
   private readonly timers: NodeJS.Timeout[] = [];
   private readonly busy = new Set<string>();
+  private readonly warnedAt = new Map<string, number>();
 
   constructor(deps: AgentDeps) {
     this.deps = deps;
@@ -161,7 +171,35 @@ export class Agent {
     if (!res.ok) {
       for (const s of serials) this.dirty.add(s);
       this.deps.log.warn("live state push failed", { status: res.status, error: res.error });
+      return;
     }
+    this.checkStateResponse(res.body as Partial<IngestStateResponse> | undefined);
+  }
+
+  /** Surface problems the dashboard reports back, which would otherwise show only as offline printers. */
+  private checkStateResponse(body: Partial<IngestStateResponse> | undefined): void {
+    if (Array.isArray(body?.rejected) && body.rejected.length > 0) {
+      this.warnSometimes(`rejected:${body.rejected.join(",")}`, "live state rejected by the dashboard", {
+        serials: body.rejected,
+        hint: "These printers are registered to another agent. Stop or revoke the other agent, then restart this one.",
+      });
+    }
+    if (typeof body?.serverNow === "number") {
+      const skewMs = this.now() - body.serverNow;
+      if (Math.abs(skewMs) > CLOCK_SKEW_WARN_MS) {
+        this.warnSometimes("clock", "this machine's clock differs from the dashboard's", {
+          skewSec: Math.round(skewMs / 1000),
+          hint: "Turn on automatic time sync. The dashboard copes, but job times will be off.",
+        });
+      }
+    }
+  }
+
+  private warnSometimes(key: string, msg: string, fields: Record<string, unknown>): void {
+    const at = this.now();
+    if (at - (this.warnedAt.get(key) ?? Number.NEGATIVE_INFINITY) < WARN_EVERY_MS) return;
+    this.warnedAt.set(key, at);
+    this.deps.log.warn(msg, fields);
   }
 
   async flushOutbox(): Promise<void> {

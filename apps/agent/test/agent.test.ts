@@ -28,9 +28,10 @@ class FakeSender implements CloudSender {
     this.events.push(...events);
     return { ok: true };
   }
+  stateBody: unknown;
   async sendStates(states: PrinterLiveState[]): Promise<SendResult> {
     this.states.push(...states);
-    return { ok: true };
+    return { ok: true, body: this.stateBody };
   }
 }
 
@@ -39,7 +40,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function replayDemo(sender = new FakeSender()) {
+async function replayDemo(sender = new FakeSender(), log: Logger = quiet) {
   const { session, files } = buildDemoSession();
   const dir = mkdtempSync(join(tmpdir(), "fleet-agent-"));
   dirs.push(dir);
@@ -56,7 +57,7 @@ async function replayDemo(sender = new FakeSender()) {
     fetcher: new LocalDirFetcher(dir),
     store,
     sender,
-    log: quiet,
+    log,
     now: () => clock,
     newId: () => `id${String(++n).padStart(4, "0")}`,
     analysisDelayMs: 0,
@@ -67,6 +68,24 @@ async function replayDemo(sender = new FakeSender()) {
   clock = start + 60_000;
   return { agent, store, sender, start };
 }
+
+describe("Agent live state feedback", () => {
+  it("warns when the dashboard rejects printers or its clock differs, at most every ten minutes", async () => {
+    const warnings: string[] = [];
+    const log: Logger = { ...quiet, warn: (msg) => warnings.push(msg) };
+    const sender = new FakeSender();
+    const { agent, start } = await replayDemo(sender, log);
+    sender.stateBody = { accepted: 2, rejected: ["01P00A000000001"], serverNow: start + 60_000 - 5 * 60_000 };
+    await agent.flushLive();
+    expect(warnings).toEqual([
+      "live state rejected by the dashboard",
+      "this machine's clock differs from the dashboard's",
+    ]);
+    agent.heartbeat();
+    await agent.flushLive();
+    expect(warnings).toHaveLength(2);
+  });
+});
 
 describe("Agent replay of the demo session", () => {
   it("emits hello, start, analysis and end events for each printer", async () => {

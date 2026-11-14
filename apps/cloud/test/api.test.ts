@@ -277,11 +277,23 @@ describe("live state", () => {
       agentKey: AGENT_KEY,
       json: { states: [state, foreign] },
     });
-    expect(await res.json()).toEqual({ accepted: 1 });
+    // The foreign printer is reported back, and the server's clock comes along for skew checks.
+    expect(await res.json()).toMatchObject({
+      accepted: 1,
+      rejected: ["NOT-MINE"],
+      serverNow: expect.any(Number),
+    });
 
     const printers = (await (await call("/api/printers", { as: ADMIN })).json()) as PrinterSummary[];
     expect(printers).toHaveLength(1);
     expect(printers[0]?.live).toMatchObject({ gcodeState: "RUNNING", progressPct: 40 });
+    expect(printers[0]?.live?.receivedAt).toBeGreaterThan(Date.now() - 60_000);
+
+    // An agent whose clock runs an hour behind still updates the state: arrival order wins.
+    const skewed = { ...state, progressPct: 41, updatedAt: state.updatedAt - 3_600_000 };
+    await call("/ingest/state", { method: "POST", agentKey: AGENT_KEY, json: { states: [skewed] } });
+    const after = (await (await call("/api/printers", { as: ADMIN })).json()) as PrinterSummary[];
+    expect(after[0]?.live?.progressPct).toBe(41);
   });
 });
 

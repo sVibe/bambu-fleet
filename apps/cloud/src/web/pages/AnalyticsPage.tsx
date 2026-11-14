@@ -94,7 +94,8 @@ function Dashboard({ data }: { data: StatsResponse }) {
   const wastePct = t.grams > 0 ? t.wasteG / t.grams : null;
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      {/* An odd last tile spans the row on two-column screens instead of sitting alone. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5 max-lg:[&>*:last-child:nth-child(odd)]:col-span-2">
         <StatTile label="Filament used" value={grams(t.grams)} />
         <StatTile
           label="Jobs"
@@ -261,7 +262,7 @@ function PrinterTable({ data }: { data: StatsResponse }) {
             <Th>Printer</Th>
             <Th className="text-right">Jobs</Th>
             <Th className="text-right">Success</Th>
-            <Th className="text-right">Hours</Th>
+            <Th className="hidden text-right sm:table-cell">Hours</Th>
             <Th className="w-2/5">Filament</Th>
           </tr>
         </thead>
@@ -277,7 +278,7 @@ function PrinterTable({ data }: { data: StatsResponse }) {
               <Td className="text-right text-ink-2">
                 {p.finished + p.failed ? percent(p.finished / (p.finished + p.failed)) : "–"}
               </Td>
-              <Td className="text-right text-ink-2">{p.hours}</Td>
+              <Td className="hidden text-right text-ink-2 sm:table-cell">{p.hours}</Td>
               <Td>
                 <div className="flex items-center gap-2">
                   <div className="h-2 flex-1 rounded-sm bg-wash">

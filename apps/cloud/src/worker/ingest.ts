@@ -2,6 +2,7 @@ import {
   consumedWeight,
   type IngestEvent,
   type IngestEventOf,
+  type IngestStateResponse,
   ingestBatchSchema,
   ingestStateSchema,
   type JobStatus,
@@ -41,15 +42,23 @@ ingest.post("/state", async (c) => {
   const parsed = ingestStateSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success)
     return c.json({ error: "Invalid state", issues: parsed.error.issues.slice(0, 10) }, 400);
-  // Only accept state for printers this agent has registered.
-  if (parsed.data.states.length === 0) return c.json({ accepted: 0 });
+  const serverNow = Date.now();
+  if (parsed.data.states.length === 0) {
+    return c.json({ accepted: 0, rejected: [], serverNow } satisfies IngestStateResponse);
+  }
+  // Only accept state for printers this agent has registered. The rest are reported back, so the agent
+  // can log that another agent owns them instead of the printers silently showing offline.
   const owned = await c.env.DB.prepare("SELECT serial FROM printers WHERE agent_id = ?")
     .bind(c.get("agentId"))
     .all<{ serial: string }>();
   const allowed = new Set(owned.results.map((r) => r.serial));
-  const states = parsed.data.states.filter((s) => allowed.has(s.serial));
+  // Freshness is judged by the server's clock, not the agent machine's.
+  const states = parsed.data.states
+    .filter((s) => allowed.has(s.serial))
+    .map((s) => ({ ...s, receivedAt: serverNow }));
+  const rejected = parsed.data.states.filter((s) => !allowed.has(s.serial)).map((s) => s.serial);
   if (states.length > 0) await fleetLive(c.env).update(states);
-  return c.json({ accepted: states.length });
+  return c.json({ accepted: states.length, rejected, serverNow } satisfies IngestStateResponse);
 });
 
 interface JobRow {

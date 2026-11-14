@@ -1,7 +1,7 @@
 import { ROLES, type Role } from "@fleet/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, invalidate, useAgents, useAudit, useMe, useUsers } from "../api.ts";
+import { api, invalidate, useAgents, useAudit, useErrorText, useMe, useUsers } from "../api.ts";
 import {
   Badge,
   Button,
@@ -23,10 +23,11 @@ export function AdminPage() {
   if (me.data?.role !== "admin") return <Empty title="Admins only" />;
   return (
     <>
-      <PageHeader title="Admin" subtitle="People, LAN agents and the audit log." />
+      <PageHeader title="Admin" subtitle="People, LAN agents, error codes and the audit log." />
       <div className="space-y-6">
         <Agents />
         <Users self={me.data.email} />
+        <ErrorCodes />
         <Audit />
       </div>
     </>
@@ -92,19 +93,22 @@ function Users({ self }: { self: string }) {
       {users.isLoading && <Loading />}
       {users.error && <ErrorState error={users.error} />}
       {users.data && (
-        <table className="mt-3 w-full min-w-[560px] text-sm">
+        <table className="mt-3 w-full text-sm sm:min-w-[560px]">
           <thead className="border-b border-hairline">
             <tr>
               <Th>Email</Th>
               <Th>Role</Th>
-              <Th>Last seen</Th>
+              <Th className="hidden sm:table-cell">Last seen</Th>
               <Th />
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
             {users.data.map((u) => (
               <tr key={u.email}>
-                <Td>{u.email}</Td>
+                <Td className="break-all">
+                  {u.email}
+                  <div className="text-xs text-muted sm:hidden">seen {ago(u.lastSeenAt)}</div>
+                </Td>
                 <Td>
                   {u.email === self ? (
                     <span className="capitalize">{u.role} (you)</span>
@@ -122,7 +126,7 @@ function Users({ self }: { self: string }) {
                     </Select>
                   )}
                 </Td>
-                <Td className="text-ink-2">{ago(u.lastSeenAt)}</Td>
+                <Td className="hidden text-ink-2 sm:table-cell">{ago(u.lastSeenAt)}</Td>
                 <Td className="text-right">
                   {u.email !== self && (
                     <Button
@@ -203,13 +207,13 @@ function Agents() {
         </div>
       )}
       {agents.data && agents.data.length > 0 && (
-        <table className="mt-3 w-full min-w-[640px] text-sm">
+        <table className="mt-3 w-full text-sm sm:min-w-[640px]">
           <thead className="border-b border-hairline">
             <tr>
               <Th>Agent</Th>
               <Th>Status</Th>
-              <Th className="text-right">Printers</Th>
-              <Th>Version</Th>
+              <Th className="hidden text-right sm:table-cell">Printers</Th>
+              <Th className="hidden sm:table-cell">Version</Th>
               <Th />
             </tr>
           </thead>
@@ -224,6 +228,10 @@ function Agents() {
                       created {dateTime(a.createdAt)}
                       {a.createdBy ? ` by ${a.createdBy}` : ""}
                     </div>
+                    <div className="text-xs text-muted sm:hidden">
+                      {a.printers} {a.printers === 1 ? "printer" : "printers"}
+                      {a.version ? ` · v${a.version}` : ""}
+                    </div>
                   </Td>
                   <Td>
                     {a.revokedAt ? (
@@ -236,8 +244,8 @@ function Agents() {
                       </Badge>
                     )}
                   </Td>
-                  <Td className="tabular text-right">{a.printers}</Td>
-                  <Td className="text-ink-2">{a.version ?? "–"}</Td>
+                  <Td className="tabular hidden text-right sm:table-cell">{a.printers}</Td>
+                  <Td className="hidden text-ink-2 sm:table-cell">{a.version ?? "–"}</Td>
                   <Td className="text-right">
                     {!a.revokedAt && (
                       <Button
@@ -263,6 +271,42 @@ function Agents() {
   );
 }
 
+/** Bambu's HMS and print-error texts, refreshed weekly by the cron. */
+function ErrorCodes() {
+  const client = useQueryClient();
+  const table = useErrorText();
+  const refresh = useMutation({
+    mutationFn: () =>
+      api<{ ok: boolean; hms?: number; error?: number }>("/api/admin/error-text/refresh", { method: "POST" }),
+    onSuccess: () => invalidate(client, "error-text", "audit"),
+  });
+  const t = table.data;
+  return (
+    <Card className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-semibold">Error codes</h2>
+          <p className="text-xs text-ink-2">
+            Descriptions for HMS alerts and print errors come from Bambu's own tables (the ones Bambu Studio
+            uses), downloaded every Monday for each printer model in the fleet.
+          </p>
+          <p className="mt-2 text-sm">
+            {t && t.ver > 0
+              ? `${Object.keys(t.hms).length} HMS codes and ${Object.keys(t.error).length} print errors, Bambu version ${t.ver}, downloaded ${ago(t.fetchedAt)}.`
+              : "Not downloaded yet. Codes show without descriptions until they are."}
+          </p>
+          {refresh.isError && (
+            <p className="mt-1 text-sm text-critical">Bambu's server didn't answer; try again later.</p>
+          )}
+        </div>
+        <Button onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+          {refresh.isPending ? "Downloading…" : "Refresh now"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 function Audit() {
   const audit = useAudit();
   return (
@@ -270,24 +314,26 @@ function Audit() {
       <h2 className="px-4 pt-4 font-semibold">Audit log</h2>
       {audit.data && audit.data.length === 0 && <p className="px-4 py-4 text-sm text-ink-2">Nothing yet.</p>}
       {audit.data && audit.data.length > 0 && (
-        <table className="mt-2 w-full min-w-[640px] text-sm">
+        <table className="mt-2 w-full text-sm sm:min-w-[640px]">
           <thead className="border-b border-hairline">
             <tr>
               <Th>When</Th>
-              <Th>Who</Th>
+              <Th className="hidden sm:table-cell">Who</Th>
               <Th>What</Th>
-              <Th>Details</Th>
+              <Th className="hidden sm:table-cell">Details</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
             {audit.data.map((a) => (
               <tr key={a.id}>
                 <Td className="tabular whitespace-nowrap text-ink-2">{dateTime(a.at)}</Td>
-                <Td>{a.actor}</Td>
-                <Td>
+                <Td className="hidden sm:table-cell">{a.actor}</Td>
+                <Td className="break-all">
                   {a.action} <span className="text-muted">{a.entityId}</span>
+                  <div className="text-xs text-muted sm:hidden">{a.actor}</div>
+                  {a.details && <div className="font-mono text-xs text-ink-2 sm:hidden">{a.details}</div>}
                 </Td>
-                <Td className="font-mono text-xs text-ink-2">{a.details ?? ""}</Td>
+                <Td className="hidden font-mono text-xs text-ink-2 sm:table-cell">{a.details ?? ""}</Td>
               </tr>
             ))}
           </tbody>
