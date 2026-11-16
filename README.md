@@ -129,7 +129,8 @@ cd apps/agent && cp agent.example.yaml agent.yaml
 ### In the background on Windows
 
 `apps/agent/scripts/windows/agent-service.ps1` registers a Task Scheduler task that starts the agent hidden when
-you log in and starts it again if it exits. It needs no administrator rights. Logs go to `apps/agent/logs/agent.log`,
+you log in. The task also fires every 5 minutes, which brings it back if it stopped, and it restarts the agent when
+it exits or has delivered nothing to the dashboard for 5 minutes (`status` shows when it last delivered). It needs no administrator rights. Logs go to `apps/agent/logs/agent.log`,
 rotated at 10 MB. The script is plain PowerShell, so it doesn't depend on the installed pnpm version. Add a
 shortcut to your PowerShell profile (`notepad $PROFILE`), with the path to your checkout:
 
@@ -144,7 +145,7 @@ fleet install    # register the task and start the agent now
 fleet status     # task state, agent PID and the last log lines
 fleet logs       # follow the log (Ctrl+C stops following, not the agent)
 fleet update     # stop, git pull, install dependencies with the pinned pnpm (via npx), start
-fleet restart    # also: start, stop, uninstall
+fleet restart    # also: start, stop (stays off until start), uninstall
 ```
 
 `pnpm run service <command>` in `apps/agent` does the same when the installed pnpm matches `packageManager`.

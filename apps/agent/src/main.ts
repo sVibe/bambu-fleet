@@ -17,7 +17,7 @@ import { AgentStore } from "./store.ts";
 const USAGE = `bambu-fleet-agent ${AGENT_VERSION}
 
 Usage:
-  agent run     [--config agent.yaml] [--log-file <path>]
+  agent run     [--config agent.yaml] [--log-file <path>] [--status-file <path>]
                                                       Follow printers and forward to the dashboard
   agent probe   [--config agent.yaml]                 Check MQTT and FTPS access for each printer
   agent record  --serial <sn> --out <file.jsonl> [--minutes 60] [--config agent.yaml]
@@ -39,6 +39,7 @@ const { positionals, values } = parseArgs({
     cloud: { type: "string" },
     key: { type: "string" },
     "log-file": { type: "string" },
+    "status-file": { type: "string" },
     help: { type: "boolean", short: "h" },
   },
 });
@@ -85,6 +86,7 @@ async function run(): Promise<void> {
     log,
     newId: ulid,
     liveIntervalMs: cfg.liveIntervalSec * 1000,
+    statusFile: values["status-file"] ? resolve(values["status-file"]) : undefined,
   });
   agent.start();
   log.info("agent started", { version: AGENT_VERSION, printers: cfg.printers.length, cloud: cfg.cloud.url });

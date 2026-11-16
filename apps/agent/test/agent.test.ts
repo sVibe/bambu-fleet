@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IngestEvent, IngestEventOf, PrinterLiveState } from "@fleet/shared";
@@ -40,7 +40,7 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-async function replayDemo(sender = new FakeSender(), log: Logger = quiet) {
+async function replayDemo(sender = new FakeSender(), log: Logger = quiet, statusFile?: string) {
   const { session, files } = buildDemoSession();
   const dir = mkdtempSync(join(tmpdir(), "fleet-agent-"));
   dirs.push(dir);
@@ -62,12 +62,33 @@ async function replayDemo(sender = new FakeSender(), log: Logger = quiet) {
     newId: () => `id${String(++n).padStart(4, "0")}`,
     analysisDelayMs: 0,
     timers: false,
+    statusFile,
   });
   agent.start();
   await source.done;
   clock = start + 60_000;
   return { agent, store, sender, start };
 }
+
+describe("Agent status file", () => {
+  it("records successful and failed deliveries for the service watchdog", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "fleet-status-"));
+    dirs.push(dir);
+    const file = join(dir, "status.json");
+    const sender = new FakeSender();
+    const { agent, start } = await replayDemo(sender, quiet, file);
+    const read = () => JSON.parse(readFileSync(file, "utf8"));
+    expect(read()).toMatchObject({ pid: process.pid, startedAt: start, lastPushOkAt: null });
+
+    await agent.flushLive();
+    expect(read()).toMatchObject({ lastPushOkAt: start + 60_000, printersKnown: 3 });
+
+    sender.sendStates = async () => ({ ok: false, status: 0, error: "fetch failed" });
+    agent.heartbeat();
+    await agent.flushLive();
+    expect(read().lastPushError).toMatchObject({ status: 0, error: "fetch failed" });
+  });
+});
 
 describe("Agent live state feedback", () => {
   it("warns when the dashboard rejects printers or its clock differs, at most every ten minutes", async () => {

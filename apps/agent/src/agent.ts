@@ -1,4 +1,4 @@
-import { createReadStream } from "node:fs";
+import { createReadStream, writeFileSync } from "node:fs";
 import {
   type IngestEvent,
   type IngestStateResponse,
@@ -35,6 +35,23 @@ export interface AgentDeps {
   analysisDelayMs?: number;
   /** Run the periodic loops on timers. Tests drive the tick methods directly instead. */
   timers?: boolean;
+  /**
+   * JSON file updated as live state is delivered, so a supervisor (the Windows service script) can
+   * tell a working agent from one that is alive but stuck.
+   */
+  statusFile?: string;
+}
+
+/** Contents of `statusFile`. */
+export interface AgentStatus {
+  pid: number;
+  startedAt: number;
+  /** Last time the dashboard accepted live state; null until the first push. */
+  lastPushOkAt: number | null;
+  lastPushError: { at: number; status: number; error: string } | null;
+  printersKnown: number;
+  printersConnected: number;
+  writtenAt: number;
 }
 
 /** Retry schedule for a job file that isn't on the printer's storage yet. */
@@ -57,14 +74,25 @@ export class Agent {
   private readonly timers: NodeJS.Timeout[] = [];
   private readonly busy = new Set<string>();
   private readonly warnedAt = new Map<string, number>();
+  private readonly status: AgentStatus;
 
   constructor(deps: AgentDeps) {
     this.deps = deps;
     this.now = deps.now ?? Date.now;
+    this.status = {
+      pid: process.pid,
+      startedAt: this.now(),
+      lastPushOkAt: null,
+      lastPushError: null,
+      printersKnown: 0,
+      printersConnected: 0,
+      writtenAt: 0,
+    };
   }
 
   start(): void {
     const { printers, store, source, newId } = this.deps;
+    this.writeStatus(true);
     for (const p of printers) {
       this.trackers.set(p.serial, new JobTracker(p.serial, store, newId));
       store.enqueue({
@@ -171,9 +199,28 @@ export class Agent {
     if (!res.ok) {
       for (const s of serials) this.dirty.add(s);
       this.deps.log.warn("live state push failed", { status: res.status, error: res.error });
+      this.status.lastPushError = { at: this.now(), status: res.status, error: res.error };
+      this.writeStatus(true);
       return;
     }
+    this.status.lastPushOkAt = this.now();
+    this.writeStatus();
     this.checkStateResponse(res.body as Partial<IngestStateResponse> | undefined);
+  }
+
+  /** Update `statusFile`: at most every 10 s unless forced. */
+  private writeStatus(force = false): void {
+    const file = this.deps.statusFile;
+    const at = this.now();
+    if (!file || (!force && at - this.status.writtenAt < 10_000)) return;
+    this.status.writtenAt = at;
+    this.status.printersKnown = this.live.size;
+    this.status.printersConnected = [...this.connected.values()].filter(Boolean).length;
+    try {
+      writeFileSync(file, JSON.stringify(this.status));
+    } catch (err) {
+      this.deps.log.warn("couldn't write status file", { file, error: errorMessage(err) });
+    }
   }
 
   /** Surface problems the dashboard reports back, which would otherwise show only as offline printers. */
