@@ -93,8 +93,12 @@ describe("ingest auth", () => {
 });
 
 describe("job lifecycle", () => {
-  async function runJob(status: "finished" | "failed", layer: number) {
+  async function runJob(status: "finished" | "failed", layer: number, partNames?: string[]) {
     const analysis = await sampleAnalysis();
+    partNames?.forEach((name, i) => {
+      const part = analysis.parts[i];
+      if (part) part.name = name;
+    });
     const events: IngestEvent[] = [
       { type: "printer.hello", id: "e1", at: 1, serial: SERIAL, name: "P1S-01", model: "P1S" },
       {
@@ -176,6 +180,21 @@ describe("job lifecycle", () => {
       { type: "printer.hello", id: "e1", at: 1, serial: SERIAL, name: "X", model: null },
     ]);
     expect(await again.json()).toEqual({ applied: 0, duplicates: 1 });
+  });
+
+  it("takes new parts' numbers from their file names", async () => {
+    await runJob("finished", 4, ["2600076_24_5_260626.stl", "Lid_161126.stl"]);
+    const list = (await (await call("/api/parts", { as: ADMIN })).json()) as PartListItem[];
+    const numbers = await Promise.all(
+      list.map(async (p) => {
+        const detail = (await (await call(`/api/parts/${p.id}`, { as: ADMIN })).json()) as PartDetail;
+        return [p.name, detail.part.partNumber];
+      }),
+    );
+    expect(numbers.sort()).toEqual([
+      ["2600076_24_5_260626.stl", "2600076"],
+      ["Lid_161126.stl", null],
+    ]);
   });
 
   it("aggregates parts and lets operators merge them", async () => {

@@ -8,6 +8,7 @@ import {
   type JobStatus,
   normalizeJobName,
   normalizePartName,
+  partNumberFromName,
 } from "@fleet/shared";
 import { plateIndexFromPath } from "@fleet/threemf";
 import { Hono } from "hono";
@@ -382,9 +383,11 @@ async function jobAnalysis(
     statements.push(
       db
         .prepare(
-          "INSERT INTO parts (id, name, normalized_name, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(normalized_name) DO NOTHING",
+          `INSERT INTO parts (id, name, normalized_name, part_number, created_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(normalized_name) DO NOTHING`,
         )
-        .bind(ulid(), name, normalized, now),
+        // New parts take their number from the file name; operators can change it on the part's page.
+        .bind(ulid(), name, normalized, partNumberFromName(name), now),
     );
   }
   for (const p of a.parts) {

@@ -4,6 +4,7 @@ import {
   materialFor,
   normalizeColor,
   normalizePartName,
+  partNumberFromName,
   roleAtLeast,
   toGcodeState,
 } from "../src/index.ts";
@@ -15,6 +16,19 @@ describe("normalizePartName", () => {
     expect(normalizePartName("  Bracket  ")).toBe("bracket");
     expect(normalizePartName("Bambu   box (3)")).toBe("bambu box");
     expect(normalizePartName("M3-10")).toBe("m3-10");
+  });
+});
+
+describe("partNumberFromName", () => {
+  it("takes the first number of exactly seven digits", () => {
+    expect(partNumberFromName("2600076_24_5_260626.stl")).toBe("2600076");
+    expect(partNumberFromName("2600095 v4_OP_1stk.stl")).toBe("2600095");
+    expect(partNumberFromName("Bracket_2600067-B.stl")).toBe("2600067");
+    expect(partNumberFromName("2600086")).toBe("2600086");
+    // Six or eight digits are dates and other numbers, not part numbers.
+    expect(partNumberFromName("Lid_modified_161126.stl")).toBeNull();
+    expect(partNumberFromName("Order 26000761.stl")).toBeNull();
+    expect(partNumberFromName("Bracket.stl")).toBeNull();
   });
 });
 
