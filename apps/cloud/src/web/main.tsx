@@ -38,6 +38,15 @@ const router = createBrowserRouter([
         path: "queue",
         lazy: async () => ({ Component: (await import("./pages/QueuePage.tsx")).QueuePage }),
       },
+      // The label editor brings pdf-lib for text metrics; load it with the labels pages only.
+      {
+        path: "labels",
+        lazy: async () => ({ Component: (await import("./pages/LabelsPage.tsx")).LabelsPage }),
+      },
+      {
+        path: "labels/:id",
+        lazy: async () => ({ Component: (await import("./pages/LabelsPage.tsx")).LabelEditorPage }),
+      },
       { path: "admin", element: <AdminPage /> },
     ],
   },

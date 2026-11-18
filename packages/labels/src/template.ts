@@ -139,3 +139,41 @@ export const PART_LABEL: LabelTemplate = {
     },
   ],
 };
+
+/** What a template is filled from: a part, or a job (with the part it printed most of). */
+export type LabelSource = "part" | "job";
+
+export const LABEL_SOURCES: LabelSource[] = ["part", "job"];
+
+/** Bounds the editor and the API keep templates within. */
+export const LABEL_LIMITS = {
+  minSizeMm: 10,
+  maxWidthMm: 200,
+  maxHeightMm: 300,
+  maxElements: 60,
+  maxTextLength: 500,
+  minFontPt: 3,
+  maxFontPt: 72,
+} as const;
+
+/**
+ * The built-in 57×32 mm job label: like the part label, for the part the job printed most of, with the
+ * pieces in this job and where and when it was printed.
+ */
+export const JOB_LABEL: LabelTemplate = {
+  widthMm: 57,
+  heightMm: 32,
+  elements: PART_LABEL.elements.map((el) =>
+    el.id === "material"
+      ? { ...el, text: "{{job.material}} · {{job.grams}} g" }
+      : el.id === "footer"
+        ? { ...el, text: "{{job.printer}} · {{job.ended}}" }
+        : el,
+  ),
+};
+
+/** Templates that always exist; they can be copied but not changed. */
+export const BUILTIN_TEMPLATES: Record<LabelSource, { id: string; name: string; template: LabelTemplate }> = {
+  part: { id: "builtin:part", name: "Part label", template: PART_LABEL },
+  job: { id: "builtin:job", name: "Job label", template: JOB_LABEL },
+};

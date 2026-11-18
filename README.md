@@ -218,19 +218,30 @@ change is written to the audit log.
 ## Printing labels (PrintNode)
 
 Labels print through [PrintNode](https://www.printnode.com): its Client runs on a computer the label printer is
-connected to, and the Worker sends it each label at its exact size (57×32 mm, width × height, for now): as ZPL
-to Zebra printers, as a PDF to others.
+connected to, and the Worker sends it each label at its template's exact size (57×32 mm, width × height, for
+the built-in labels): as ZPL to Zebra printers, as a PDF to others.
 
 1. **Connect:** `wrangler secret put PRINTNODE_API_KEY` (for local use, put it in `.dev.vars`).
 2. **Printers:** Admin → Printing → *Refresh printers*. Give printers a name, pick the default label printer,
-   and if needed the driver's paper and a rotation. Without a chosen paper, the one matching 57×32 mm (either way round, ±1 mm) is used.
+   and if needed the driver's paper and a rotation. Without a chosen paper, the one matching the label's size
+   (either way round, ±1 mm) is used.
    *Test label* prints the layout with example values.
 3. **Status updates:** Admin → Printing → *Set up webhook* registers a URL with a random token in PrintNode
    (or copy the URL and secret into PrintNode's webhook form). Add a Cloudflare Access **Bypass** policy for
    `/webhooks/printnode/*`. A cron also checks unfinished jobs every five minutes, because PrintNode retries a
    failed delivery only once.
-4. **Print:** on a part's page, operators enter the quantity for the label and print. The QR code holds the
-   part number (set under Edit), or the part name when there is none.
+4. **Print:** operators print from a part's page, a job's page, or for up to 50 jobs picked in History
+   (*Print labels*). The quantity is optional; job labels show the job's pieces without one. The built-in QR
+   code holds the part number (taken from the file name, editable under Edit), or the part name without one.
+
+**Label editor (Labels in the menu).** Part labels are filled from a part, job labels from a job and the part
+it printed most of. Each kind has a built-in label that can be copied but not changed; admins make templates
+(any size from 10 mm to 200×300 mm), and *Make default* chooses what prints when nobody picks a template. The
+canvas draws the label with the same text layout as the printed one: drag to move, drag a corner to resize,
+arrow keys nudge, ⌘Z undoes, ⌘S saves. Text and QR codes take `{{variables}}` from the picker; *Show with* fills
+them from a real part or job, a red outline marks text that's cut short with "…", and *Test print* prints the
+label as it is on screen, saved or not. Saving over someone else's newer save is refused. Deleted templates stay
+in the database so the print history can still name them.
 
 **Zebra printers (ZDesigner driver, e.g. GK420d):** labels go as raw ZPL, the printer's own language, with the
 label's size in the job (`^PW`/`^LL`). The printer finds each label with its gap sensor, so the driver's paper

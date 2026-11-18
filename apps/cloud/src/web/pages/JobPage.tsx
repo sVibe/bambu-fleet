@@ -1,7 +1,9 @@
+import { roleAtLeast } from "@fleet/shared";
 import { Link, useParams } from "react-router";
 import type { JobDetail } from "../../api-types.ts";
-import { useJob } from "../api.ts";
+import { useJob, useMe } from "../api.ts";
 import { PrintError } from "../components/Hms.tsx";
+import { LabelCard } from "../components/Print.tsx";
 import {
   Card,
   ErrorState,
@@ -25,6 +27,8 @@ const ATTRIBUTION_NOTE: Record<string, string> = {
 export function JobPage() {
   const { id = "" } = useParams();
   const job = useJob(id);
+  const me = useMe();
+  const canPrint = me.data ? roleAtLeast(me.data.role, "operator") : false;
   if (job.isLoading) return <Loading />;
   if (job.error || !job.data) return <ErrorState error={job.error} />;
   const j = job.data;
@@ -93,6 +97,7 @@ export function JobPage() {
               <Meta label="File MD5" value={j.fileMd5} mono />
             </dl>
           </Card>
+          {canPrint && <LabelCard source="job" id={j.id} />}
         </aside>
       </div>
     </>

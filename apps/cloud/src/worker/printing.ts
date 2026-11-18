@@ -7,7 +7,14 @@ import {
   shiftTemplate,
 } from "@fleet/labels";
 import { ulid } from "ulidx";
-import type { PartDetail, PrintFormat, PrintJobRow, PrintJobState, PrintPrinter } from "../api-types.ts";
+import type {
+  JobDetail,
+  PartDetail,
+  PrintFormat,
+  PrintJobRow,
+  PrintJobState,
+  PrintPrinter,
+} from "../api-types.ts";
 import type { Env } from "./env.ts";
 import {
   type PrintNode,
@@ -75,7 +82,11 @@ export function speaksZpl(r: Pick<PrinterRow, "name" | "description">): boolean 
   return /zdesigner|zebra|\bzpl\b/i.test(`${r.name} ${r.description ?? ""}`);
 }
 
-export function toPrinter(r: PrinterRow): PrintPrinter {
+/** A printer as the API shows it; labelPaper is matched to the given label size (the default part label's). */
+export function toPrinter(
+  r: PrinterRow,
+  labelSize: { widthMm: number; heightMm: number } = PART_LABEL,
+): PrintPrinter {
   const caps = parseJson<PrintNodeCapabilities | null>(r.capabilities, null);
   const dpi = Number.parseInt(caps?.dpis?.[0] ?? "", 10);
   const papers = Object.entries(caps?.papers ?? {}).map(([name, size]) => ({
@@ -93,7 +104,7 @@ export function toPrinter(r: PrinterRow): PrintPrinter {
     computerState: r.computer_state,
     papers,
     paper: r.paper,
-    labelPaper: r.paper ?? matchPaper(papers, PART_LABEL.widthMm, PART_LABEL.heightMm) ?? null,
+    labelPaper: r.paper ?? matchPaper(papers, labelSize.widthMm, labelSize.heightMm) ?? null,
     format: r.format === "pdf" || r.format === "zpl" ? r.format : null,
     sendsAs: r.format === "pdf" || r.format === "zpl" ? r.format : speaksZpl(r) ? "zpl" : "pdf",
     dpi: Number.isFinite(dpi) && dpi > 0 ? dpi : null,
@@ -393,13 +404,22 @@ function dateParts(at: number, timeZone: string): { date: string; time: string }
 const num = (n: number | null | undefined, digits: number) =>
   n === null || n === undefined ? "–" : String(Math.round(n * 10 ** digits) / 10 ** digits);
 
-/** Values for the part label placeholders (see PART_VARIABLES in @fleet/labels). */
-export function partLabelValues(
-  detail: PartDetail,
-  opts: { qty: number | null; now: number; origin: string; timeZone: string },
-): LabelValues {
-  const { part, stats } = detail;
+interface LabelValueOptions {
+  /** Quantity entered when printing, for label.qty. */
+  qty: number | null;
+  now: number;
+  origin: string;
+  timeZone: string;
+}
+
+const labelGroup = (opts: LabelValueOptions, qty: number | null): LabelValues => {
   const printed = dateParts(opts.now, opts.timeZone);
+  return { "label.qty": qty ? `${qty} pcs` : "", "label.date": printed.date, "label.time": printed.time };
+};
+
+/** Values for part label placeholders (LABEL_VARIABLES.part in @fleet/labels). */
+export function partLabelValues(detail: PartDetail, opts: LabelValueOptions): LabelValues {
+  const { part, stats } = detail;
   return {
     "part.number": part.partNumber?.trim() || part.name,
     "part.name": part.name,
@@ -413,8 +433,66 @@ export function partLabelValues(
     "part.jobs": String(stats.jobs),
     "part.last_printed": stats.lastPrintedAt ? dateParts(stats.lastPrintedAt, opts.timeZone).date : "–",
     "part.url": `${opts.origin}/parts/${part.id}`,
-    "label.qty": opts.qty ? `${opts.qty} pcs` : "",
-    "label.date": printed.date,
-    "label.time": printed.time,
+    ...labelGroup(opts, opts.qty),
+  };
+}
+
+function durationText(seconds: number | null): string {
+  if (seconds === null) return "–";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+/**
+ * Values for job label placeholders (LABEL_VARIABLES.job in @fleet/labels). The part.* values are
+ * those of the part the job printed most pieces of; label.qty is those pieces unless a quantity is given.
+ */
+export function jobLabelValues(job: JobDetail, opts: LabelValueOptions): LabelValues {
+  const groups = new Map<
+    string,
+    { number: string; name: string; qty: number; grams: number; weighed: number }
+  >();
+  for (const p of job.parts) {
+    if (p.skipped) continue;
+    const g = groups.get(p.partId) ?? {
+      number: p.partNumber?.trim() || p.partName,
+      name: p.partName,
+      qty: 0,
+      grams: 0,
+      weighed: 0,
+    };
+    g.qty++;
+    if (p.weightG !== null) {
+      g.grams += p.weightG;
+      g.weighed++;
+    }
+    groups.set(p.partId, g);
+  }
+  const parts = [...groups.values()].sort((a, b) => b.qty - a.qty);
+  const main = parts[0];
+  const pieces = parts.reduce((n, p) => n + p.qty, 0);
+  const materials = [...new Set(job.filaments.map((f) => f.material).filter((m): m is string => Boolean(m)))];
+  const started = dateParts(job.startedAt, opts.timeZone);
+  return {
+    "part.number": main?.number ?? job.name,
+    "part.name": main?.name ?? job.name,
+    "part.qty": main ? String(main.qty) : "",
+    "part.g": main?.weighed ? num(main.grams / main.weighed, 1) : "–",
+    "job.name": job.name,
+    "job.printer": job.printerName,
+    "job.status": job.status,
+    "job.started": `${started.date} ${started.time}`,
+    "job.ended": job.endedAt ? dateParts(job.endedAt, opts.timeZone).date : "–",
+    "job.duration": durationText(job.durationS),
+    "job.plate": job.plateIndex === null ? "–" : String(job.plateIndex),
+    "job.file": job.fileName ?? "",
+    "job.material": materials.join(", ") || "–",
+    "job.grams": num(job.actualWeightG ?? job.estWeightG, 0),
+    "job.waste_g": num(job.wasteG, 0),
+    "job.pieces": String(pieces),
+    "job.parts": parts.map((p) => `${p.number} ×${p.qty}`).join(", "),
+    "job.url": `${opts.origin}/jobs/${job.id}`,
+    ...labelGroup(opts, opts.qty ?? main?.qty ?? null),
   };
 }

@@ -1,3 +1,4 @@
+import type { LabelSource, LabelTemplate, LabelValues } from "@fleet/labels";
 import type {
   AmsUnit,
   GcodeState,
@@ -68,6 +69,7 @@ export interface JobPart {
   identifyId: string;
   partId: string;
   partName: string;
+  partNumber: string | null;
   objectName: string;
   skipped: boolean;
   weightG: number | null;
@@ -366,4 +368,33 @@ export interface PrintAdminStatus {
     id: number | null;
     counts: { received: number; successful: number; failed: number; dropped: number } | null;
   };
+}
+
+/** A label template: one made in the editor, or a built-in one (which can be copied, not changed). */
+export interface LabelTemplateRow {
+  id: string;
+  name: string;
+  source: LabelSource;
+  builtIn: boolean;
+  /** Printed when a print doesn't name a template. */
+  isDefault: boolean;
+  template: LabelTemplate;
+  /** Sent back when saving; a save over a newer version is refused. */
+  version: number;
+  updatedBy: string | null;
+  updatedAt: number | null;
+}
+
+export interface LabelTemplatesResponse {
+  templates: LabelTemplateRow[];
+}
+
+/** A label's placeholder values for one part or job, for the editor's canvas. */
+export interface LabelValuesResponse {
+  title: string;
+  values: LabelValues;
+}
+
+export interface PrintBatchResponse {
+  jobs: PrintJobRow[];
 }

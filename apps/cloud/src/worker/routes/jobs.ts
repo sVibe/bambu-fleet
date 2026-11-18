@@ -118,8 +118,12 @@ jobs.get("/jobs", async (c) => {
 });
 
 jobs.get("/jobs/:id", async (c) => {
-  const id = c.req.param("id");
-  const db = c.env.DB;
+  const detail = await loadJobDetail(c.env.DB, c.req.param("id"));
+  return detail ? c.json(detail) : c.json({ error: "Job not found" }, 404);
+});
+
+/** A job with its filaments and parts, or null when there's no such job. */
+export async function loadJobDetail(db: D1Database, id: string): Promise<JobDetail | null> {
   const row = await db
     .prepare(
       `SELECT ${JOB_COLUMNS}, j.task_id, j.plate_index, j.file_name, j.file_md5, j.printer_model_id, j.est_length_m,
@@ -146,7 +150,7 @@ jobs.get("/jobs/:id", async (c) => {
         ams_snapshot: string | null;
       }
     >();
-  if (!row) return c.json({ error: "Job not found" }, 404);
+  if (!row) return null;
 
   const [filaments, parts] = await db.batch([
     db
@@ -156,7 +160,7 @@ jobs.get("/jobs/:id", async (c) => {
       .bind(id),
     db
       .prepare(
-        `SELECT jp.identify_id, jp.part_id, pt.name AS part_name, jp.object_name, jp.skipped, jp.weight_g,
+        `SELECT jp.identify_id, jp.part_id, pt.name AS part_name, pt.part_number, jp.object_name, jp.skipped, jp.weight_g,
            jp.waste_share_g, jp.per_filament
          FROM job_parts jp JOIN parts pt ON pt.id = jp.part_id WHERE jp.job_id = ? ORDER BY jp.object_name, jp.identify_id`,
       )
@@ -198,6 +202,7 @@ jobs.get("/jobs/:id", async (c) => {
         identifyId: r.identify_id as string,
         partId: r.part_id as string,
         partName: r.part_name as string,
+        partNumber: (r.part_number as string | null) ?? null,
         objectName: r.object_name as string,
         skipped: r.skipped === 1,
         weightG: r.weight_g as number | null,
@@ -206,8 +211,8 @@ jobs.get("/jobs/:id", async (c) => {
       };
     }),
   };
-  return c.json(detail);
-});
+  return detail;
+}
 
 jobs.get("/thumbs/:jobId", async (c) => {
   const object = await c.env.FILES.get(`thumbs/${c.req.param("jobId")}.png`);

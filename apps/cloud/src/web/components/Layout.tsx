@@ -10,6 +10,7 @@ const NAV = [
   { to: "/parts", label: "Parts" },
   { to: "/analytics", label: "Materials" },
   { to: "/utilization", label: "Utilization" },
+  { to: "/labels", label: "Labels" },
 ];
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>

@@ -1,7 +1,14 @@
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PrintJobRow, PrintPrintersResponse } from "../src/api-types.ts";
+import type {
+  LabelTemplateRow,
+  LabelTemplatesResponse,
+  LabelValuesResponse,
+  PrintBatchResponse,
+  PrintJobRow,
+  PrintPrintersResponse,
+} from "../src/api-types.ts";
 import worker from "../src/worker/index.ts";
 import { pollPrinting, WEBHOOK_TOKEN_KEY } from "../src/worker/printing.ts";
 
@@ -86,7 +93,19 @@ function mockPrintNode() {
   });
 }
 
-const TABLES = ["print_jobs", "print_printers", "settings", "job_parts", "parts", "users", "audit_log"];
+const TABLES = [
+  "print_jobs",
+  "print_printers",
+  "settings",
+  "label_templates",
+  "job_filaments",
+  "job_parts",
+  "jobs",
+  "printers",
+  "parts",
+  "users",
+  "audit_log",
+];
 
 beforeEach(async () => {
   await env.DB.batch(TABLES.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
@@ -381,5 +400,206 @@ describe("part number", () => {
     expect((await json<PrintJobRow>(printLabel())).title).toBe("Label 2600068");
     await call(`/api/parts/${PART}`, { method: "PATCH", as: OPERATOR, json: { partNumber: "" } });
     expect((await json<PrintJobRow>(printLabel())).title).toBe("Label Bracket v3");
+  });
+});
+
+const SMALL = {
+  widthMm: 40,
+  heightMm: 30,
+  elements: [
+    { id: "qr", type: "qr", x: 1, y: 1, w: 18, h: 18, value: "{{part.number}}" },
+    { id: "t", type: "text", x: 20, y: 1, w: 19, h: 6, text: "{{label.qty}}", fontSize: 10, bold: true },
+  ],
+};
+
+const createTemplate = (body: Record<string, unknown> = {}, as = ADMIN) =>
+  call("/api/print/templates", {
+    method: "POST",
+    as,
+    json: { name: "Small", source: "part", template: SMALL, ...body },
+  });
+
+const sentZpl = (i = 0) =>
+  atob(
+    (sent.filter((s) => s.path === "/printjobs")[i]?.body as { content: string } | undefined)?.content ?? "",
+  );
+
+describe("label templates", () => {
+  it("lists the built-in labels, which print by default", async () => {
+    const { templates } = await json<LabelTemplatesResponse>(call("/api/print/templates", { as: VIEWER }));
+    expect(templates.map((t) => [t.id, t.source, t.builtIn, t.isDefault])).toEqual([
+      ["builtin:part", "part", true, true],
+      ["builtin:job", "job", true, true],
+    ]);
+  });
+
+  it("are saved by admins, refuse stale saves and can become the default", async () => {
+    expect((await createTemplate({}, OPERATOR)).status).toBe(403);
+    const created = await createTemplate();
+    expect(created.status).toBe(201);
+    const t = (await created.json()) as LabelTemplateRow;
+    expect(t).toMatchObject({ name: "Small", source: "part", builtIn: false, isDefault: false, version: 1 });
+
+    const save = (version: number, name: string) =>
+      call(`/api/print/templates/${t.id}`, {
+        method: "PUT",
+        as: ADMIN,
+        json: { name, template: SMALL, version },
+      });
+    const saved = await save(1, "Small batch");
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toMatchObject({ name: "Small batch", version: 2, updatedBy: ADMIN });
+    const stale = await save(1, "Someone else");
+    expect(stale.status).toBe(409);
+
+    expect((await call(`/api/print/templates/${t.id}/default`, { method: "PUT", as: ADMIN })).status).toBe(
+      200,
+    );
+    const { templates } = await json<LabelTemplatesResponse>(call("/api/print/templates", { as: VIEWER }));
+    expect(templates.filter((x) => x.isDefault).map((x) => x.id)).toEqual(["builtin:job", t.id]);
+
+    // Prints without a template now use it, at its own size.
+    await syncAndChooseLabelPrinter();
+    expect((await printLabel({ qty: 5 })).status).toBe(201);
+    expect(sentZpl()).toContain("^PW320");
+    expect(sentZpl()).toContain("^LL240");
+    const printers = await json<PrintPrintersResponse>(call("/api/print/printers", { as: VIEWER }));
+    expect(printers.labelSizeMm).toEqual({ width: 40, height: 30 });
+    const row = await env.DB.prepare("SELECT template FROM print_jobs").first();
+    expect(row).toEqual({ template: t.id });
+
+    // Deleting it brings back the built-in label.
+    expect((await call(`/api/print/templates/${t.id}`, { method: "DELETE", as: ADMIN })).status).toBe(200);
+    expect((await call(`/api/print/templates/${t.id}`, { as: VIEWER })).status).toBe(404);
+    await printLabel();
+    expect(sentZpl(1)).toContain("^PW456");
+  });
+
+  it("rejects labels out of bounds and changes to built-in ones", async () => {
+    expect((await createTemplate({ template: { ...SMALL, widthMm: 5 } })).status).toBe(400);
+    expect((await createTemplate({ name: "" })).status).toBe(400);
+    const res = await call("/api/print/templates/builtin:part", {
+      method: "PUT",
+      as: ADMIN,
+      json: { name: "Mine", template: SMALL, version: 0 },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("previews and test-prints an unsaved template", async () => {
+    const preview = await call("/api/print/preview", {
+      method: "POST",
+      as: VIEWER,
+      json: { kind: "part-label", partId: PART, template: SMALL },
+    });
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get("content-type")).toBe("application/pdf");
+
+    await syncAndChooseLabelPrinter();
+    const res = await printLabel({ kind: "test-label", template: SMALL });
+    expect(res.status).toBe(201);
+    expect(sentZpl()).toContain("^PW320");
+    expect(sentZpl()).toContain("50 pcs");
+  });
+});
+
+describe("job labels", () => {
+  const JOB = "01JOB00000000000000000000A";
+  const JOB2 = "01JOB00000000000000000000B";
+  const OTHER = "01PART0000000000000000000B";
+
+  beforeEach(async () => {
+    const db = env.DB;
+    await db.batch([
+      db.prepare("INSERT INTO printers (serial, name, created_at) VALUES ('P1', 'X1C-1', 0)"),
+      db
+        .prepare("INSERT INTO parts (id, name, normalized_name, created_at) VALUES (?, 'Clip', 'clip', 0)")
+        .bind(OTHER),
+      ...[JOB, JOB2].map((id, i) =>
+        db
+          .prepare(
+            `INSERT INTO jobs (id, printer_serial, name, status, started_at, ended_at, duration_s, actual_weight_g,
+               created_at, updated_at)
+             VALUES (?, 'P1', ?, 'finished', 1763366400000, 1763386800000, 20400, 61.5, 0, 0)`,
+          )
+          .bind(id, `2600067_plate_${i + 1}`),
+      ),
+      db.prepare("INSERT INTO job_filaments (job_id, idx, material) VALUES (?, 0, 'PETG')").bind(JOB),
+      ...[
+        ["1", PART, 0, 12],
+        ["2", PART, 0, 13],
+        ["3", PART, 1, null],
+        ["4", OTHER, 0, 5],
+      ].map(([identify, part, skipped, weight]) =>
+        db
+          .prepare(
+            "INSERT INTO job_parts (job_id, identify_id, part_id, object_name, skipped, weight_g) VALUES (?, ?, ?, 'obj', ?, ?)",
+          )
+          .bind(JOB, identify, part, skipped, weight),
+      ),
+    ]);
+  });
+
+  it("fill from the part the job printed most of", async () => {
+    const { values } = await json<LabelValuesResponse>(
+      call(`/api/print/values?source=job&id=${JOB}`, { as: VIEWER }),
+    );
+    expect(values).toMatchObject({
+      "part.number": "2600067",
+      "part.name": "Bracket v3",
+      "part.qty": "2",
+      "part.g": "12.5",
+      "job.name": "2600067_plate_1",
+      "job.printer": "X1C-1",
+      "job.material": "PETG",
+      "job.grams": "62",
+      "job.duration": "5 h 40 min",
+      "job.pieces": "3",
+      "job.parts": "2600067 ×2, Clip ×1",
+      "label.qty": "2 pcs",
+    });
+
+    await syncAndChooseLabelPrinter();
+    const res = await call("/api/print/jobs", {
+      method: "POST",
+      as: OPERATOR,
+      json: { kind: "job-label", jobId: JOB },
+    });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ entity: "job", entityId: JOB, template: "builtin:job" });
+    expect(sentZpl()).toContain("^FDMA,2600067^FS");
+    expect(sentZpl()).toContain("2 pcs");
+  });
+
+  it("won't use a part template", async () => {
+    const t = await json<LabelTemplateRow>(createTemplate());
+    await syncAndChooseLabelPrinter();
+    const res = await call("/api/print/jobs", {
+      method: "POST",
+      as: OPERATOR,
+      json: { kind: "job-label", jobId: JOB, templateId: t.id },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("print in batches, and not at all when a job is missing", async () => {
+    await syncAndChooseLabelPrinter();
+    const batch = (jobIds: string[]) =>
+      call("/api/print/batch", { method: "POST", as: OPERATOR, json: { jobIds, copies: 2 } });
+    expect((await batch([JOB, "missing"])).status).toBe(404);
+    expect(sent.filter((s) => s.path === "/printjobs")).toHaveLength(0);
+
+    const res = await batch([JOB, JOB2, JOB]);
+    expect(res.status).toBe(201);
+    const { jobs } = (await res.json()) as PrintBatchResponse;
+    expect(jobs.map((j) => [j.entityId, j.copies, j.state])).toEqual([
+      [JOB, 2, "new"],
+      [JOB2, 2, "new"],
+    ]);
+    // A job without part data is labelled with its name.
+    expect(sentZpl(1)).toContain("^FDMA,2600067_5Fplate_5F2^FS");
+    expect(
+      (await call("/api/print/batch", { method: "POST", as: VIEWER, json: { jobIds: [JOB] } })).status,
+    ).toBe(403);
   });
 });

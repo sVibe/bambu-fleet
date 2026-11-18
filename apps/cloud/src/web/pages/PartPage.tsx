@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, invalidate, useMe, usePart, useParts } from "../api.ts";
 import { PartImage } from "../components/PartImage.tsx";
-import { PartLabelCard } from "../components/Print.tsx";
+import { LabelCard } from "../components/Print.tsx";
 import {
   Button,
   Card,
@@ -182,7 +182,7 @@ export function PartPage() {
               </ul>
             )}
           </Card>
-          {canEdit && <PartLabelCard partId={id} />}
+          {canEdit && <LabelCard source="part" id={id} />}
           {canEdit && (
             <EditPart
               id={id}

@@ -5,6 +5,9 @@ import type {
   ErrorTextTable,
   JobDetail,
   JobListResponse,
+  LabelTemplateRow,
+  LabelTemplatesResponse,
+  LabelValuesResponse,
   Me,
   PartDetail,
   PartListItem,
@@ -130,6 +133,29 @@ export const usePrintJobs = (entity?: { type: string; id: string }) =>
       api<PrintJobRow[]>(`/api/print/jobs${qs({ entity: entity?.type, entityId: entity?.id, limit: 20 })}`),
     refetchInterval: (query) =>
       query.state.data?.some((j) => OPEN_PRINT_STATES.has(j.state)) ? 3000 : false,
+  });
+
+export const useLabelTemplates = () =>
+  useQuery({
+    queryKey: ["label-templates"],
+    queryFn: () => api<LabelTemplatesResponse>("/api/print/templates"),
+  });
+
+export const useLabelTemplate = (id: string) =>
+  useQuery({
+    queryKey: ["label-templates", id],
+    queryFn: () => api<LabelTemplateRow>(`/api/print/templates/${encodeURIComponent(id)}`),
+    // The editor holds its own copy while open; don't swap it underneath.
+    refetchOnWindowFocus: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+
+/** A part's or job's label values, for drawing a template with real data. */
+export const useLabelValues = (source: "part" | "job", id: string | null) =>
+  useQuery({
+    queryKey: ["label-values", source, id],
+    queryFn: () => api<LabelValuesResponse>(`/api/print/values${qs({ source, id })}`),
+    enabled: Boolean(id),
   });
 
 export const usePrintAdmin = () =>

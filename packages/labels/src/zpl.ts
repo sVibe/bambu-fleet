@@ -1,13 +1,11 @@
-import { PDFDocument, type PDFFont, StandardFonts } from "pdf-lib";
 import qrcode from "qrcode-generator";
-import { encodable, LINE_HEIGHT, layoutText } from "./render.ts";
+import { type LaidOutText, layoutLabel, measuringFonts } from "./layout.ts";
 import {
   type BoxElement,
   fillPlaceholders,
   type LabelTemplate,
   type LabelValues,
   type QrElement,
-  type TextElement,
 } from "./template.ts";
 
 export interface ZplOptions {
@@ -37,11 +35,7 @@ export async function renderLabelZpl(
 ): Promise<string> {
   const dpmm = (options.dpi ?? 203) / 25.4;
   const dots = (mm: number) => Math.max(0, Math.round(mm * dpmm));
-  const doc = await PDFDocument.create();
-  const fonts = {
-    regular: await doc.embedFont(StandardFonts.Helvetica),
-    bold: await doc.embedFont(StandardFonts.HelveticaBold),
-  };
+  const fonts = await measuringFonts();
 
   const out = [
     "^XA",
@@ -55,11 +49,11 @@ export async function renderLabelZpl(
     `^LS${-Math.round((options.offsetMm?.x ?? 0) * dpmm)}`,
     options.upsideDown ? "^POI" : "^PON",
   ];
-  for (const el of template.elements) {
-    if (el.type === "text")
-      out.push(...zplText(el, fillPlaceholders(el.text, values), el.bold ? fonts.bold : fonts.regular, dots));
-    else if (el.type === "qr") out.push(...zplQr(el, fillPlaceholders(el.value, values), dots));
-    else out.push(zplBox(el, dots));
+  for (const item of layoutLabel(template, values, fonts)) {
+    if (item.type === "text") out.push(...zplText(item, dots));
+    // The printer encodes QR codes itself, so they're sized from the value rather than the layout.
+    else if (item.type === "qr") out.push(...zplQr(item.el, fillPlaceholders(item.el.value, values), dots));
+    else out.push(zplBox(item.el, dots));
   }
   out.push("^PQ1", "^XZ");
   return `${out.join("\n")}\n`;
@@ -70,18 +64,15 @@ function fieldData(text: string): string {
   return `^FH_^FD${text.replace(/[_^~]/g, (ch) => `_${ch.charCodeAt(0).toString(16).toUpperCase()}`)}^FS`;
 }
 
-function zplText(el: TextElement, raw: string, font: PDFFont, dots: (mm: number) => number): string[] {
-  const text = encodable(font, raw);
-  if (!text) return [];
-  const { size, lines } = layoutText(text, font, el);
-  const mmPerPt = 25.4 / 72;
-  const height = Math.max(10, dots(size * mmPerPt));
+function zplText(item: LaidOutText, dots: (mm: number) => number): string[] {
+  const { el, size, lines } = item;
+  const height = Math.max(10, dots((size * 25.4) / 72));
   const justify = el.align === "center" ? "C" : el.align === "right" ? "R" : "L";
-  return lines.map((line, i) => {
-    const y = el.y + i * size * LINE_HEIGHT * mmPerPt;
-    // ^FB keeps each line to the box width and aligns it; font 0 may lack "…", so use three dots.
-    return `^FO${dots(el.x)},${dots(y)}^A0N,${height},0^FB${dots(el.w)},1,0,${justify},0${fieldData(line.replace(/…/g, "..."))}`;
-  });
+  // ^FB keeps each line to the box width and aligns it; font 0 may lack "…", so use three dots.
+  return lines.map(
+    (line) =>
+      `^FO${dots(el.x)},${dots(line.top)}^A0N,${height},0^FB${dots(el.w)},1,0,${justify},0${fieldData(line.text.replace(/…/g, "..."))}`,
+  );
 }
 
 function qrMode(value: string): "Numeric" | "Alphanumeric" | "Byte" {

@@ -1,9 +1,14 @@
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import {
+  BUILTIN_TEMPLATES,
   EXAMPLE_PART_VALUES,
+  exampleValues,
   fillPlaceholders,
+  LABEL_VARIABLES,
+  layoutLabel,
   layoutText,
+  measuringFonts,
   PART_LABEL,
   renderLabelPdf,
   renderLabelZpl,
@@ -26,7 +31,7 @@ describe("layoutText", () => {
   it("shrinks text until it fits, then cuts it with an ellipsis", async () => {
     const font = await (await PDFDocument.create()).embedFont(StandardFonts.Helvetica);
     const box = { w: 18, h: 5, fontSize: 10, minFontSize: 6, maxLines: 1 };
-    expect(layoutText("Short", font, box)).toEqual({ size: 10, lines: ["Short"] });
+    expect(layoutText("Short", font, box)).toEqual({ size: 10, lines: ["Short"], cut: false });
 
     const medium = layoutText("A somewhat longer name", font, box);
     expect(medium.size).toBeLessThan(10);
@@ -92,5 +97,65 @@ describe("renderLabelZpl", () => {
     expect(zpl).toContain("^FDA_5EB_7EC_5FD^FS");
     expect(zpl).toContain("^PW673");
     expect(zpl).toContain("^POI");
+  });
+});
+
+describe("layoutLabel", () => {
+  it("places text lines in mm and flags text cut short", async () => {
+    const fonts = await measuringFonts();
+    const box = { id: "t", type: "text" as const, x: 5, y: 2, w: 20, h: 4, fontSize: 10, maxLines: 1 };
+    const [fits] = layoutLabel(
+      { widthMm: 30, heightMm: 10, elements: [{ ...box, text: "Short", align: "right" }] },
+      {},
+      fonts,
+    );
+    expect(fits?.type).toBe("text");
+    if (fits?.type !== "text") return;
+    const line = fits.lines[0];
+    expect(fits.cut).toBe(false);
+    expect(line?.top).toBe(2);
+    expect((line?.x ?? 0) + (line?.width ?? 0)).toBeCloseTo(25, 5);
+    expect(line?.baseline).toBeGreaterThan(2);
+
+    const [cut] = layoutLabel(
+      { widthMm: 30, heightMm: 10, elements: [{ ...box, text: "A very long part name that cannot fit" }] },
+      {},
+      fonts,
+    );
+    expect(cut?.type === "text" && cut.cut).toBe(true);
+  });
+
+  it("leaves out elements whose value is empty", async () => {
+    const items = layoutLabel(
+      PART_LABEL,
+      { ...EXAMPLE_PART_VALUES, "label.qty": "" },
+      await measuringFonts(),
+    );
+    expect(items.map((i) => i.el.id)).not.toContain("qty");
+    expect(items.map((i) => i.el.id)).toContain("qr");
+  });
+});
+
+describe("templates and variables", () => {
+  it("has example values for every variable the built-in labels use", () => {
+    for (const source of ["part", "job"] as const) {
+      const values = exampleValues(source);
+      const used = BUILTIN_TEMPLATES[source].template.elements.flatMap((el) =>
+        [
+          ...(el.type === "text" ? el.text : el.type === "qr" ? el.value : "").matchAll(
+            /\{\{([a-z0-9_.]+)\}\}/g,
+          ),
+        ].map((m) => m[1]),
+      );
+      expect(used.length).toBeGreaterThan(0);
+      for (const name of used) expect(values, `${source}: ${name}`).toHaveProperty([name as string]);
+    }
+  });
+
+  it("names each variable once per kind", () => {
+    for (const groups of Object.values(LABEL_VARIABLES)) {
+      const names = groups.flatMap((g) => g.variables.map((v) => v.name));
+      expect(new Set(names).size).toBe(names.length);
+    }
   });
 });

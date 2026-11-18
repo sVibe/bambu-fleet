@@ -1,7 +1,9 @@
+import { roleAtLeast } from "@fleet/shared";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { fetchJobs, type JobFilters, usePrinters } from "../api.ts";
+import { fetchJobs, type JobFilters, useMe, usePrinters } from "../api.ts";
+import { BatchLabelPanel } from "../components/Print.tsx";
 import {
   Button,
   Card,
@@ -18,6 +20,8 @@ import {
   Thumb,
 } from "../components/ui.tsx";
 import { dateTime, duration, grams } from "../format.ts";
+
+const MAX_BATCH = 50;
 
 const RANGES: Array<{ label: string; days: number | null }> = [
   { label: "Last 7 days", days: 7 },
@@ -58,6 +62,16 @@ export function HistoryPage() {
   };
 
   const items = jobs.data?.pages.flatMap((p) => p.items) ?? [];
+
+  // Operators pick jobs to print a label for each; one batch prints at most 50.
+  const me = useMe();
+  const canPrint = me.data ? roleAtLeast(me.data.role, "operator") : false;
+  const [selected, setSelected] = useState<string[]>([]);
+  const [printing, setPrinting] = useState(false);
+  const toggle = (id: string) =>
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : s.length < MAX_BATCH ? [...s, id] : s));
+  const shown = items.slice(0, MAX_BATCH).map((j) => j.id);
+  const allShown = shown.length > 0 && shown.every((id) => selected.includes(id));
 
   return (
     <>
@@ -121,6 +135,31 @@ export function HistoryPage() {
         )}
       </div>
 
+      {canPrint && selected.length > 0 && !printing && (
+        <div className="sticky top-16 z-[5] mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-raised px-3 py-2 text-sm shadow-sm">
+          <span className="font-medium">{selected.length} selected</span>
+          {selected.length === MAX_BATCH && <span className="text-muted">(at most {MAX_BATCH})</span>}
+          <span className="flex-1" />
+          <Button variant="ghost" onClick={() => setSelected([])}>
+            Clear
+          </Button>
+          <Button variant="primary" onClick={() => setPrinting(true)}>
+            Print labels
+          </Button>
+        </div>
+      )}
+      {canPrint && printing && (
+        <div className="mb-4">
+          <BatchLabelPanel
+            jobIds={selected}
+            onClose={() => {
+              setPrinting(false);
+              setSelected([]);
+            }}
+          />
+        </div>
+      )}
+
       {jobs.isLoading && <Loading />}
       {jobs.error && <ErrorState error={jobs.error} />}
       {jobs.data && items.length === 0 && (
@@ -132,6 +171,19 @@ export function HistoryPage() {
           <table className="w-full text-sm md:min-w-[760px]">
             <thead className="border-b border-hairline">
               <tr>
+                {canPrint && (
+                  <Th className="w-8">
+                    <input
+                      type="checkbox"
+                      aria-label="Select the jobs shown"
+                      checked={allShown}
+                      onChange={() =>
+                        setSelected(allShown ? selected.filter((id) => !shown.includes(id)) : shown)
+                      }
+                      className="size-4 accent-accent"
+                    />
+                  </Th>
+                )}
                 <Th>Job</Th>
                 <Th className="hidden md:table-cell">Printer</Th>
                 <Th>Status</Th>
@@ -144,6 +196,17 @@ export function HistoryPage() {
             <tbody className="divide-y divide-hairline">
               {items.map((j) => (
                 <tr key={j.id} className="hover:bg-wash/60">
+                  {canPrint && (
+                    <Td className="w-8">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${j.name}`}
+                        checked={selected.includes(j.id)}
+                        onChange={() => toggle(j.id)}
+                        className="size-4 accent-accent"
+                      />
+                    </Td>
+                  )}
                   <Td>
                     <Link
                       to={`/jobs/${j.id}`}
