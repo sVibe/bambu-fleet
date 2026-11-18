@@ -18,6 +18,7 @@ Printers (cloud mode) ──MQTT 8883 (read) / FTPS 990 (read)──▶ LAN agen
 |---|---|
 | `packages/shared` | Types and zod schemas shared by agent and cloud (ingest API, live state, roles) |
 | `packages/threemf` | Streaming `.gcode.3mf` parser: filament per plate and **grams per object** from G-code labels |
+| `packages/labels` | Label templates (mm, with `{{placeholders}}`) rendered to PDF with QR codes, in the Worker and browser |
 | `apps/agent` | LAN agent: reads each printer's local MQTT, tracks jobs, fetches the job 3MF over FTPS, forwards events |
 | `apps/cloud` | Cloudflare Worker API + React dashboard (Fleet, Queue, History, Job, Parts, Materials, Admin) |
 
@@ -213,6 +214,38 @@ The **Queue** page plans prints across the fleet. Starting each print stays a hu
 
 Everyone can see the queue. Uploading, queueing, dispatching and downloading files need the operator role, and each
 change is written to the audit log.
+
+## Printing labels (PrintNode)
+
+Labels print through [PrintNode](https://www.printnode.com): its Client runs on a computer the label printer is
+connected to, and the Worker sends it each label at its exact size (57×32 mm, width × height, for now): as ZPL
+to Zebra printers, as a PDF to others.
+
+1. **Connect:** `wrangler secret put PRINTNODE_API_KEY` (for local use, put it in `.dev.vars`).
+2. **Printers:** Admin → Printing → *Refresh printers*. Give printers a name, pick the default label printer,
+   and if needed the driver's paper and a rotation. Without a chosen paper, the one matching 57×32 mm (either way round, ±1 mm) is used.
+   *Test label* prints the layout with example values.
+3. **Status updates:** Admin → Printing → *Set up webhook* registers a URL with a random token in PrintNode
+   (or copy the URL and secret into PrintNode's webhook form). Add a Cloudflare Access **Bypass** policy for
+   `/webhooks/printnode/*`. A cron also checks unfinished jobs every five minutes, because PrintNode retries a
+   failed delivery only once.
+4. **Print:** on a part's page, operators enter the quantity for the label and print. The QR code holds the
+   part number (set under Edit), or the part name when there is none.
+
+**Zebra printers (ZDesigner driver, e.g. GK420d):** labels go as raw ZPL, the printer's own language, with the
+label's size in the job (`^PW`/`^LL`). The printer finds each label with its gap sensor, so the driver's paper
+size doesn't matter and a template can change size without touching the PrintNode computer. Printers whose name
+or driver mentions ZDesigner or Zebra use ZPL automatically; Admin → Printing → *Sends* switches a printer to
+PDF or ZPL by hand. ZPL takes the resolution PrintNode reports (203 dpi on a GK420) and a 180° rotation; the
+text uses the printer's font 0. Calibrate a new roll once by holding the feed button until it flashes twice.
+
+Other printers get a PDF at the label's exact size, sent at actual size (`fit_to_page: false`) on the driver
+paper that matches it. PrintNode can't set a page size per job, so that paper must exist in the driver's
+*Printing Defaults* (Printer properties → Advanced; the PrintNode Client runs as a service and ignores your own
+*Printing Preferences*).
+
+PrintNode's last state, "Sent to printer", means the computer's print queue accepted the label, not that it
+came out. Labels that can't be delivered within an hour expire instead of printing late.
 
 ## Not built yet
 

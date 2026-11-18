@@ -14,6 +14,10 @@ export interface Env {
   BOOTSTRAP_ADMIN_EMAIL: string;
   /** Role given to other Access-authenticated users on first sign-in: viewer, operator or "none". */
   DEFAULT_ROLE: string;
+  /** PrintNode API key (a secret: `wrangler secret put PRINTNODE_API_KEY`). Printing is off without it. */
+  PRINTNODE_API_KEY?: string;
+  /** IANA time zone for dates printed on labels, e.g. `Europe/Copenhagen`. */
+  TIME_ZONE?: string;
   /**
    * Local development only (set in .dev.vars, never in production): requests from localhost are
    * signed in as this email instead of verifying a Cloudflare Access token.

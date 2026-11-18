@@ -9,9 +9,9 @@
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
-    // Serve the React app for unknown paths; /api and /ingest always reach the Worker.
+    // Serve the React app for unknown paths; /api, /ingest and /webhooks always reach the Worker.
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/ingest/*"]
+    "run_worker_first": ["/api/*", "/ingest/*", "/webhooks/*"]
   },
   "d1_databases": [
     {
@@ -31,9 +31,13 @@
     "ACCESS_TEAM_DOMAIN": "scanomat.cloudflareaccess.com",
     "ACCESS_AUD": "7efc00aaf12c0568d13896b814b79e362d72ae496b9b0182576e8e742368097e",
     "BOOTSTRAP_ADMIN_EMAIL": "svp@scanomat.dk",
-    "DEFAULT_ROLE": "viewer"
+    "DEFAULT_ROLE": "viewer",
+    // Dates and times printed on labels.
+    "TIME_ZONE": "Europe/Copenhagen"
+    // PRINTNODE_API_KEY is a secret: wrangler secret put PRINTNODE_API_KEY
   },
   // Mondays 03:17 UTC: refresh Bambu's HMS and print-error texts (see src/worker/errorText.ts).
-  "triggers": { "crons": ["17 3 * * MON"] },
+  // Every 5 minutes: PrintNode printers and job states webhooks missed (see src/worker/printing.ts).
+  "triggers": { "crons": ["17 3 * * MON", "*/5 * * * *"] },
   "observability": { "enabled": true }
 }

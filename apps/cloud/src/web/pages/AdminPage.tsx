@@ -2,6 +2,7 @@ import { ROLES, type Role } from "@fleet/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, invalidate, useAgents, useAudit, useErrorText, useMe, useUsers } from "../api.ts";
+import { PrintingAdmin } from "../components/PrintingAdmin.tsx";
 import {
   Badge,
   Button,
@@ -23,10 +24,11 @@ export function AdminPage() {
   if (me.data?.role !== "admin") return <Empty title="Admins only" />;
   return (
     <>
-      <PageHeader title="Admin" subtitle="People, LAN agents, error codes and the audit log." />
+      <PageHeader title="Admin" subtitle="People, LAN agents, printing, error codes and the audit log." />
       <div className="space-y-6">
         <Agents />
         <Users self={me.data.email} />
+        <PrintingAdmin />
         <ErrorCodes />
         <Audit />
       </div>

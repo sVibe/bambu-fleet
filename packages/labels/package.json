@@ -1,0 +1,17 @@
+{
+  "name": "@fleet/labels",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pdf-lib": "1.17.1",
+    "qrcode-generator": "2.0.4"
+  }
+}

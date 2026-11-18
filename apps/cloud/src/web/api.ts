@@ -8,7 +8,10 @@ import type {
   Me,
   PartDetail,
   PartListItem,
+  PrintAdminStatus,
   PrinterSummary,
+  PrintJobRow,
+  PrintPrintersResponse,
   QueueItem,
   StatsResponse,
   UserRow,
@@ -110,6 +113,27 @@ export const useUtilization = (from: number) =>
     queryKey: ["utilization", from],
     queryFn: () => api<UtilizationResponse>(`/api/utilization${qs({ from })}`),
   });
+
+export const usePrintPrinters = () =>
+  useQuery({
+    queryKey: ["print-printers"],
+    queryFn: () => api<PrintPrintersResponse>("/api/print/printers"),
+  });
+
+const OPEN_PRINT_STATES = new Set(["submitting", "new", "sent_to_client"]);
+
+/** Print history, of one entity (e.g. a part) or of everything; polled while a job is on its way. */
+export const usePrintJobs = (entity?: { type: string; id: string }) =>
+  useQuery({
+    queryKey: ["print-jobs", entity?.type ?? null, entity?.id ?? null],
+    queryFn: () =>
+      api<PrintJobRow[]>(`/api/print/jobs${qs({ entity: entity?.type, entityId: entity?.id, limit: 20 })}`),
+    refetchInterval: (query) =>
+      query.state.data?.some((j) => OPEN_PRINT_STATES.has(j.state)) ? 3000 : false,
+  });
+
+export const usePrintAdmin = () =>
+  useQuery({ queryKey: ["print-admin"], queryFn: () => api<PrintAdminStatus>("/api/print/admin") });
 
 export const useUsers = () =>
   useQuery({ queryKey: ["users"], queryFn: () => api<UserRow[]>("/api/admin/users") });

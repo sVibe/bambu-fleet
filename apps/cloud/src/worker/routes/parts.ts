@@ -163,21 +163,24 @@ parts.get("/parts", async (c) => {
   );
 });
 
-parts.get("/parts/:id", async (c) => {
-  const db = c.env.DB;
-  const id = c.req.param("id");
+/** A part with its stats, materials and jobs; null when unknown, or where a merged part now lives. */
+export async function loadPartDetail(
+  db: D1Database,
+  id: string,
+): Promise<PartDetail | { mergedInto: string } | null> {
   const part = await db
-    .prepare("SELECT id, name, notes, created_at, merged_into FROM parts WHERE id = ?")
+    .prepare("SELECT id, name, part_number, notes, created_at, merged_into FROM parts WHERE id = ?")
     .bind(id)
     .first<{
       id: string;
       name: string;
+      part_number: string | null;
       notes: string | null;
       created_at: number;
       merged_into: string | null;
     }>();
-  if (!part) return c.json({ error: "Part not found" }, 404);
-  if (part.merged_into) return c.json({ mergedInto: part.merged_into }, 409);
+  if (!part) return null;
+  if (part.merged_into) return { mergedInto: part.merged_into };
 
   const [stats, materials, history, dominant, imageRows] = await db.batch([
     db.prepare(`${PART_STATS} WHERE pt.id = ? GROUP BY pt.id`).bind(id),
@@ -205,7 +208,13 @@ parts.get("/parts/:id", async (c) => {
   const image = partImages((imageRows?.results ?? []) as Parameters<typeof partImages>[0]).get(id) ?? null;
 
   const body: PartDetail = {
-    part: { id: part.id, name: part.name, notes: part.notes, createdAt: part.created_at },
+    part: {
+      id: part.id,
+      name: part.name,
+      partNumber: part.part_number,
+      notes: part.notes,
+      createdAt: part.created_at,
+    },
     stats: toItem(
       (stats?.results[0] as PartStatsRow | undefined) ??
         ({
@@ -237,23 +246,40 @@ parts.get("/parts/:id", async (c) => {
       grams: r.grams as number | null,
     })),
   };
-  return c.json(body);
+  return body;
+}
+
+parts.get("/parts/:id", async (c) => {
+  const detail = await loadPartDetail(c.env.DB, c.req.param("id"));
+  if (!detail) return c.json({ error: "Part not found" }, 404);
+  if ("mergedInto" in detail) return c.json(detail, 409);
+  return c.json(detail);
 });
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   notes: z.string().max(2000).nullable().optional(),
+  partNumber: z.string().trim().max(100).nullable().optional(),
 });
 
 parts.patch("/parts/:id", requireRole("operator"), async (c) => {
   const parsed = patchSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "Invalid part update" }, 400);
   const id = c.req.param("id");
-  const { name, notes } = parsed.data;
+  const { name, notes, partNumber } = parsed.data;
   const res = await c.env.DB.prepare(
-    "UPDATE parts SET name = COALESCE(?, name), notes = CASE WHEN ? THEN ? ELSE notes END WHERE id = ? AND merged_into IS NULL",
+    `UPDATE parts SET name = COALESCE(?, name), notes = CASE WHEN ? THEN ? ELSE notes END,
+       part_number = CASE WHEN ? THEN ? ELSE part_number END
+     WHERE id = ? AND merged_into IS NULL`,
   )
-    .bind(name ?? null, notes !== undefined ? 1 : 0, notes ?? null, id)
+    .bind(
+      name ?? null,
+      notes !== undefined ? 1 : 0,
+      notes ?? null,
+      partNumber !== undefined ? 1 : 0,
+      partNumber || null,
+      id,
+    )
     .run();
   if (res.meta.changes === 0) return c.json({ error: "Part not found" }, 404);
   await audit(c, "part.update", "part", id, parsed.data);

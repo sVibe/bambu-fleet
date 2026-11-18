@@ -118,7 +118,7 @@ export interface PartListItem {
 }
 
 export interface PartDetail {
-  part: { id: string; name: string; notes: string | null; createdAt: number };
+  part: { id: string; name: string; partNumber: string | null; notes: string | null; createdAt: number };
   stats: PartListItem;
   materials: Array<{ material: string | null; color: string | null; grams: number }>;
   history: Array<{
@@ -287,4 +287,83 @@ export interface UtilizationResponse {
   printers: Array<{ serial: string; name: string; model: string | null; createdAt: number }>;
   /** Busy time per job, clipped to the range; a job still printing runs until now. */
   intervals: Array<{ serial: string; start: number; end: number }>;
+}
+
+/** A printer of the PrintNode account. */
+export interface PrintPrinter {
+  id: number;
+  name: string;
+  /** Name given in the dashboard, else null. */
+  alias: string | null;
+  description: string | null;
+  state: string | null;
+  computerName: string;
+  computerState: string | null;
+  /** Paper sizes the driver reports, in millimetres. */
+  papers: Array<{ name: string; widthMm: number | null; heightMm: number | null }>;
+  /** Paper chosen for labels, or null to pick the one matching the label size. */
+  paper: string | null;
+  /** The paper labels will print on: the chosen one, else the one matching the label size, else null. */
+  labelPaper: string | null;
+  /** Label format chosen in the dashboard, or null to pick by the driver name. */
+  format: PrintFormat | null;
+  /** What labels are actually sent as: ZPL for Zebra drivers unless set otherwise, else PDF. */
+  sendsAs: PrintFormat;
+  /** Resolution the driver reports, in dots per inch. */
+  dpi: number | null;
+  /** Millimetres to move labels down and to the right on this printer. */
+  offsetMm: { x: number; y: number };
+  rotate: 0 | 90 | 180 | 270;
+  syncedAt: number;
+}
+
+/** pdf goes through the printer's driver; zpl is sent straight to a Zebra label printer. */
+export type PrintFormat = "pdf" | "zpl";
+
+export interface PrintPrintersResponse {
+  /** Whether a PrintNode API key is set. */
+  configured: boolean;
+  labelPrinterId: number | null;
+  /** Size of the part label, width × height. */
+  labelSizeMm: { width: number; height: number };
+  printers: PrintPrinter[];
+}
+
+/** submitting and failed are the dashboard's own; the others are PrintNode's job states. */
+export type PrintJobState = "submitting" | "failed" | "new" | "sent_to_client" | "done" | "error" | "expired";
+
+export interface PrintJobRow {
+  id: string;
+  printNodeId: number | null;
+  printerId: number;
+  printerName: string | null;
+  template: string;
+  entity: string | null;
+  entityId: string | null;
+  title: string;
+  copies: number;
+  state: PrintJobState;
+  message: string | null;
+  requestedBy: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PrintAdminStatus {
+  configured: boolean;
+  account: {
+    email: string;
+    credits: number | null;
+    computers: number | null;
+    totalPrints: number | null;
+  } | null;
+  accountError: string | null;
+  webhook: {
+    /** URL and secret to enter in PrintNode, once created. */
+    url: string | null;
+    secret: string | null;
+    /** PrintNode's id when the dashboard registered it. */
+    id: number | null;
+    counts: { received: number; successful: number; failed: number; dropped: number } | null;
+  };
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, invalidate, useMe, usePart, useParts } from "../api.ts";
 import { PartImage } from "../components/PartImage.tsx";
+import { PartLabelCard } from "../components/Print.tsx";
 import {
   Button,
   Card,
@@ -39,7 +40,14 @@ export function PartPage() {
           ← Parts
         </Link>
       </p>
-      <PageHeader title={part.data.part.name} subtitle={part.data.part.notes ?? undefined} />
+      <PageHeader
+        title={part.data.part.name}
+        subtitle={
+          [part.data.part.partNumber && `Part number ${part.data.part.partNumber}`, part.data.part.notes]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
+      />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)] lg:grid-cols-[240px_minmax(0,1fr)]">
         <Card className="flex flex-col p-3">
@@ -174,24 +182,46 @@ export function PartPage() {
               </ul>
             )}
           </Card>
-          {canEdit && <EditPart id={id} name={part.data.part.name} notes={part.data.part.notes} />}
+          {canEdit && <PartLabelCard partId={id} />}
+          {canEdit && (
+            <EditPart
+              id={id}
+              name={part.data.part.name}
+              partNumber={part.data.part.partNumber}
+              notes={part.data.part.notes}
+            />
+          )}
         </div>
       </div>
     </>
   );
 }
 
-function EditPart({ id, name, notes }: { id: string; name: string; notes: string | null }) {
+function EditPart({
+  id,
+  name,
+  partNumber,
+  notes,
+}: {
+  id: string;
+  name: string;
+  partNumber: string | null;
+  notes: string | null;
+}) {
   const client = useQueryClient();
   const navigate = useNavigate();
   const [newName, setNewName] = useState(name);
+  const [newNumber, setNewNumber] = useState(partNumber ?? "");
   const [newNotes, setNewNotes] = useState(notes ?? "");
   const [mergeInto, setMergeInto] = useState("");
   const others = useParts("");
 
   const save = useMutation({
     mutationFn: () =>
-      api(`/api/parts/${id}`, { method: "PATCH", json: { name: newName, notes: newNotes || null } }),
+      api(`/api/parts/${id}`, {
+        method: "PATCH",
+        json: { name: newName, partNumber: newNumber.trim() || null, notes: newNotes || null },
+      }),
     onSuccess: () => invalidate(client, "part", "parts"),
   });
   const merge = useMutation({
@@ -212,6 +242,18 @@ function EditPart({ id, name, notes }: { id: string; name: string; notes: string
           onChange={(e) => setNewName(e.target.value)}
           className={`${inputClass} mt-1 w-full`}
         />
+      </label>
+      <label className="block text-sm">
+        <span className="text-ink-2">Part number</span>
+        <input
+          value={newNumber}
+          onChange={(e) => setNewNumber(e.target.value)}
+          placeholder={name}
+          className={`${inputClass} mt-1 w-full`}
+        />
+        <span className="mt-1 block text-xs text-muted">
+          On labels and in their QR code; the name is used when empty.
+        </span>
       </label>
       <label className="block text-sm">
         <span className="text-ink-2">Notes</span>
