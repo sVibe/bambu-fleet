@@ -243,6 +243,16 @@ them from a real part or job, a red outline marks text that's cut short with "â€
 label as it is on screen, saved or not. Saving over someone else's newer save is refused. Deleted templates stay
 in the database so the print history can still name them.
 
+**Automatic labels (a part's page â†’ Automatic labels).** Operators switch them on per part with a number of
+pieces per label, e.g. 50 for 2600067. Each finished job adds its good pieces of the part (skipped objects don't
+count, failed and cancelled jobs count nothing) and, each time the count reaches 50, a job label prints for the
+job that reached it, with "50 pcs" as `{{label.qty}}` and the part's values in `{{part.*}}`. Pieces past 50 carry
+over, so 45 + 12 prints one label and leaves 7; a plate of 120 prints two. A job counts once, when it has
+finished and its part data has arrived, whichever comes last. Jobs printed before the setting was saved don't
+count, and *Counted so far* corrects the count (e.g. after scrapping pieces). Each part can use its own job
+template and printer, or the defaults. A label that couldn't be sent is listed with the reason and can be
+printed again; merging parts adds the count to the part that remains.
+
 **Zebra printers (ZDesigner driver, e.g. GK420d):** labels go as raw ZPL, the printer's own language, with the
 label's size in the job (`^PW`/`^LL`). The printer finds each label with its gap sensor, so the driver's paper
 size doesn't matter and a template can change size without touching the PrintNode computer. Printers whose name

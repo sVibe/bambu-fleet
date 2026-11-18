@@ -2,6 +2,7 @@ import { type QueryClient, useQuery } from "@tanstack/react-query";
 import type {
   AgentRow,
   AuditRow,
+  AutoLabelResponse,
   ErrorTextTable,
   JobDetail,
   JobListResponse,
@@ -148,6 +149,15 @@ export const useLabelTemplate = (id: string) =>
     // The editor holds its own copy while open; don't swap it underneath.
     refetchOnWindowFocus: false,
     staleTime: Number.POSITIVE_INFINITY,
+  });
+
+/** A part's automatic label settings and its recent automatic labels; polled while one is on its way. */
+export const useAutoLabel = (partId: string) =>
+  useQuery({
+    queryKey: ["auto-label", partId],
+    queryFn: () => api<AutoLabelResponse>(`/api/print/auto/parts/${encodeURIComponent(partId)}`),
+    refetchInterval: (query) =>
+      query.state.data?.runs.some((r) => r.printState && OPEN_PRINT_STATES.has(r.printState)) ? 3000 : false,
   });
 
 /** A part's or job's label values, for drawing a template with real data. */

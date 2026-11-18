@@ -398,3 +398,38 @@ export interface LabelValuesResponse {
 export interface PrintBatchResponse {
   jobs: PrintJobRow[];
 }
+
+/** A part's automatic job label: printed each time `threshold` good pieces have been printed. */
+export interface AutoLabelSettings {
+  enabled: boolean;
+  threshold: number;
+  /** Good pieces counted since the last label. */
+  tally: number;
+  /** Automatic labels printed so far. */
+  labels: number;
+  /** A job label template, or null for the default job label. */
+  templateId: string | null;
+  /** A PrintNode printer, or null for the default label printer. */
+  printerId: number | null;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+/** One automatic label: the job in which the part reached its threshold. */
+export interface AutoLabelRun {
+  id: string;
+  seq: number;
+  qty: number;
+  jobId: string;
+  jobName: string | null;
+  createdAt: number;
+  /** The print job, or null with an error when none could be sent. */
+  printJobId: string | null;
+  printState: PrintJobState | null;
+  error: string | null;
+}
+
+export interface AutoLabelResponse {
+  settings: AutoLabelSettings | null;
+  runs: AutoLabelRun[];
+}

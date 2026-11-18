@@ -50,7 +50,9 @@ export function JobPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         {/* min-w-0: without it a wide table stretches the grid and the whole page scrolls sideways. */}
         <div className="min-w-0 space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* An odd last tile spans the row on two- and four-column screens instead of sitting alone. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2">
+            <PiecesFact job={j} />
             <Fact
               label={stopped ? "Filament used (est.)" : "Filament"}
               value={grams(j.actualWeightG ?? j.estWeightG)}
@@ -101,6 +103,23 @@ export function JobPage() {
         </aside>
       </div>
     </>
+  );
+}
+
+/** Good pieces on the plate: each object once, skipped ones left out. */
+function PiecesFact({ job }: { job: JobDetail }) {
+  if (job.parts.length === 0) return <Fact label="Pieces" value="–" note="no part data" />;
+  const good = job.parts.filter((p) => !p.skipped);
+  const skipped = job.parts.length - good.length;
+  const kinds = new Set(good.map((p) => p.partId)).size;
+  const stopped = job.status === "failed" || job.status === "cancelled";
+  const notes = [
+    stopped ? "not finished" : job.status === "printing" ? "on the plate" : null,
+    kinds > 1 ? `${kinds} parts` : null,
+    skipped > 0 ? `${skipped} skipped` : null,
+  ].filter(Boolean);
+  return (
+    <Fact label="Pieces" value={`${good.length} pcs`} note={notes.length ? notes.join(" · ") : undefined} />
   );
 }
 

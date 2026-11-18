@@ -304,6 +304,21 @@ parts.post("/parts/:id/merge", requireRole("operator"), async (c) => {
   if (!target || !source) return c.json({ error: "Part not found" }, 404);
   await db.batch([
     db.prepare("UPDATE job_parts SET part_id = ? WHERE part_id = ?").bind(into, id),
+    // Automatic labels: the count so far joins the remaining part's, or its settings move along with it.
+    db
+      .prepare(
+        `UPDATE part_auto_labels SET tally = tally + (SELECT tally FROM part_auto_labels WHERE part_id = ?)
+         WHERE part_id = ? AND EXISTS (SELECT 1 FROM part_auto_labels WHERE part_id = ?)`,
+      )
+      .bind(id, into, id),
+    db
+      .prepare(
+        `UPDATE part_auto_labels SET part_id = ?
+         WHERE part_id = ? AND NOT EXISTS (SELECT 1 FROM part_auto_labels WHERE part_id = ?)`,
+      )
+      .bind(into, id, into),
+    db.prepare("DELETE FROM part_auto_labels WHERE part_id = ?").bind(id),
+    db.prepare("UPDATE part_label_runs SET part_id = ? WHERE part_id = ?").bind(into, id),
     // Earlier merges into the source follow it to the new target, so lookups stay one level deep.
     db.prepare("UPDATE parts SET merged_into = ? WHERE id = ? OR merged_into = ?").bind(into, id, id),
   ]);

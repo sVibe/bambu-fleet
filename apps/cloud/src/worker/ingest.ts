@@ -14,6 +14,7 @@ import { plateIndexFromPath } from "@fleet/threemf";
 import { Hono } from "hono";
 import { ulid } from "ulidx";
 import { requireAgent } from "./auth.ts";
+import { countJobForLabels } from "./autoLabels.ts";
 import type { AppEnv, Env } from "./env.ts";
 import { fleetLive } from "./live.ts";
 import { partImageKey } from "./util.ts";
@@ -29,13 +30,29 @@ ingest.post("/events", async (c) => {
   const now = Date.now();
   let applied = 0;
   let duplicates = 0;
+  const ended = new Set<string>();
   for (const event of parsed.data.events) {
-    if (await applyEvent(c.env, agentId, event, now)) applied++;
-    else duplicates++;
+    if (await applyEvent(c.env, agentId, event, now)) {
+      applied++;
+      if (event.type === "job.ended" || event.type === "job.analysis") ended.add(event.jobId);
+    } else duplicates++;
   }
   await c.env.DB.prepare("UPDATE agents SET last_seen_at = ?, version = ? WHERE id = ?")
     .bind(now, parsed.data.agentVersion, agentId)
     .run();
+  // A job counts towards automatic labels once it has finished and its parts are known; printing
+  // happens after the agent has its answer.
+  if (ended.size > 0) {
+    const origin = new URL(c.req.url).origin;
+    c.executionCtx.waitUntil(
+      (async () => {
+        for (const jobId of ended)
+          await countJobForLabels(c.env, jobId, origin).catch((err) =>
+            console.error("automatic labels failed", jobId, err),
+          );
+      })(),
+    );
+  }
   return c.json({ applied, duplicates });
 });
 

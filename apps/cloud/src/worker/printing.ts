@@ -410,6 +410,8 @@ interface LabelValueOptions {
   now: number;
   origin: string;
   timeZone: string;
+  /** For job labels: the part whose values fill part.*, instead of the one printed most. */
+  partId?: string;
 }
 
 const labelGroup = (opts: LabelValueOptions, qty: number | null): LabelValues => {
@@ -446,7 +448,8 @@ function durationText(seconds: number | null): string {
 
 /**
  * Values for job label placeholders (LABEL_VARIABLES.job in @fleet/labels). The part.* values are
- * those of the part the job printed most pieces of; label.qty is those pieces unless a quantity is given.
+ * those of the part asked for, else of the part the job printed most pieces of; label.qty is those
+ * pieces unless a quantity is given.
  */
 export function jobLabelValues(job: JobDetail, opts: LabelValueOptions): LabelValues {
   const groups = new Map<
@@ -470,7 +473,7 @@ export function jobLabelValues(job: JobDetail, opts: LabelValueOptions): LabelVa
     groups.set(p.partId, g);
   }
   const parts = [...groups.values()].sort((a, b) => b.qty - a.qty);
-  const main = parts[0];
+  const main = (opts.partId && groups.get(opts.partId)) || parts[0];
   const pieces = parts.reduce((n, p) => n + p.qty, 0);
   const materials = [...new Set(job.filaments.map((f) => f.material).filter((m): m is string => Boolean(m)))];
   const started = dateParts(job.startedAt, opts.timeZone);

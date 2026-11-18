@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   type TooltipContentProps,
@@ -120,35 +121,69 @@ function Dashboard({ data }: { data: StatsResponse }) {
   );
 }
 
+type MaterialView = "time" | "material";
+
 function MaterialChart({ data }: { data: StatsResponse }) {
   const [showTable, setShowTable] = useState(false);
+  const [view, setView] = useState<MaterialView>("time");
   const totals = new Map<string, number>();
   const rows = new Map<string, Record<string, number | string>>();
+  const byMaterial = new Map<string, number>();
   for (const r of data.byPeriod) {
     const f = family(r.material);
     const row = rows.get(r.period) ?? { period: r.period };
     row[f] = ((row[f] as number | undefined) ?? 0) + r.grams;
     rows.set(r.period, row);
     totals.set(f, (totals.get(f) ?? 0) + r.grams);
+    byMaterial.set(r.material, (byMaterial.get(r.material) ?? 0) + r.grams);
   }
   const series = [...FAMILIES, "Other"].filter((f) => totals.has(f));
   const chartRows = [...rows.values()];
   const top = series.at(-1);
+  // Most used first, so the most popular material leads the axis.
+  const materialRows = [...byMaterial.entries()]
+    .map(([material, g]) => ({ material, family: family(material), grams: g }))
+    .sort((a, b) => b.grams - a.grams || a.material.localeCompare(b.material));
+  const materialTotal = materialRows.reduce((n, r) => n + r.grams, 0);
+  const views: Array<[MaterialView, string]> = [
+    ["time", `By ${data.range.bucket}`],
+    ["material", "By material"],
+  ];
 
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="font-semibold">Filament by material</h2>
-          <p className="text-xs text-ink-2">Grams per {data.range.bucket}</p>
+          <p className="text-xs text-ink-2">
+            {view === "time" ? `Grams per ${data.range.bucket}` : "Grams per material type, most used first"}
+          </p>
         </div>
-        <button
-          type="button"
-          className="text-xs text-accent-ink hover:underline"
-          onClick={() => setShowTable((v) => !v)}
-        >
-          {showTable ? "Show chart" : "Show table"}
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex rounded-lg border border-hairline bg-raised p-0.5 text-xs">
+            {views.map(([v, label]) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+                className={cx(
+                  "rounded-md px-2.5 py-1",
+                  view === v ? "bg-wash font-medium text-ink" : "text-ink-2 hover:text-ink",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="text-xs text-accent-ink hover:underline"
+            onClick={() => setShowTable((v) => !v)}
+          >
+            {showTable ? "Show chart" : "Show table"}
+          </button>
+        </div>
       </div>
       {series.length > 1 && (
         <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-ink-2" aria-label="Legend">
@@ -160,7 +195,7 @@ function MaterialChart({ data }: { data: StatsResponse }) {
           ))}
         </ul>
       )}
-      {showTable ? (
+      {showTable && view === "time" && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="border-b border-hairline">
@@ -187,43 +222,132 @@ function MaterialChart({ data }: { data: StatsResponse }) {
             </tbody>
           </table>
         </div>
-      ) : (
+      )}
+      {showTable && view === "material" && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-hairline">
+              <tr>
+                <Th>Material</Th>
+                <Th className="text-right">Filament</Th>
+                <Th className="text-right">Share</Th>
+              </tr>
+            </thead>
+            <tbody className="tabular divide-y divide-hairline">
+              {materialRows.map((r) => (
+                <tr key={r.material}>
+                  <Td>
+                    <span className="inline-flex items-center gap-2">
+                      <span
+                        className="inline-block size-2.5 rounded-sm"
+                        style={{ background: FAMILY_COLOR[r.family] }}
+                      />
+                      {r.material}
+                    </span>
+                  </Td>
+                  <Td className="text-right">{grams(r.grams)}</Td>
+                  <Td className="text-right text-ink-2">
+                    {materialTotal ? percent(r.grams / materialTotal) : "–"}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {!showTable && (
         <div className="mt-3 h-72">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartRows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="30%">
-              <CartesianGrid vertical={false} stroke="var(--color-grid)" />
-              <XAxis
-                dataKey="period"
-                tickLine={false}
-                axisLine={{ stroke: "var(--color-line)" }}
-                tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                width={56}
-                tick={{ fill: "var(--color-muted)", fontSize: 12 }}
-                tickFormatter={(v: number) => grams(v)}
-              />
-              <Tooltip content={MaterialTooltip} cursor={{ fill: "var(--color-wash)" }} />
-              {series.map((s) => (
-                <Bar
-                  key={s}
-                  dataKey={s}
-                  stackId="m"
-                  fill={FAMILY_COLOR[s]}
-                  stroke="var(--color-surface)"
-                  strokeWidth={2}
-                  maxBarSize={24}
-                  radius={s === top ? [4, 4, 0, 0] : 0}
-                  isAnimationActive={false}
+            {view === "time" ? (
+              <BarChart
+                data={chartRows}
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                barCategoryGap="30%"
+              >
+                <CartesianGrid vertical={false} stroke="var(--color-grid)" />
+                <XAxis
+                  dataKey="period"
+                  tickLine={false}
+                  axisLine={{ stroke: "var(--color-line)" }}
+                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
                 />
-              ))}
-            </BarChart>
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                  tickFormatter={(v: number) => grams(v)}
+                />
+                <Tooltip content={MaterialTooltip} cursor={{ fill: "var(--color-wash)" }} />
+                {series.map((s) => (
+                  <Bar
+                    key={s}
+                    dataKey={s}
+                    stackId="m"
+                    fill={FAMILY_COLOR[s]}
+                    stroke="var(--color-surface)"
+                    strokeWidth={2}
+                    maxBarSize={24}
+                    radius={s === top ? [4, 4, 0, 0] : 0}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </BarChart>
+            ) : (
+              <BarChart
+                data={materialRows}
+                margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+                barCategoryGap="30%"
+              >
+                <CartesianGrid vertical={false} stroke="var(--color-grid)" />
+                <XAxis
+                  dataKey="material"
+                  tickLine={false}
+                  interval={0}
+                  axisLine={{ stroke: "var(--color-line)" }}
+                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={56}
+                  tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+                  tickFormatter={(v: number) => grams(v)}
+                />
+                <Tooltip
+                  content={(props) => <MaterialTypeTooltip {...props} total={materialTotal} />}
+                  cursor={{ fill: "var(--color-wash)" }}
+                />
+                <Bar dataKey="grams" maxBarSize={48} radius={[4, 4, 0, 0]} isAnimationActive={false}>
+                  {materialRows.map((r) => (
+                    <Cell key={r.material} fill={FAMILY_COLOR[r.family]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            )}
           </ResponsiveContainer>
         </div>
       )}
     </Card>
+  );
+}
+
+function MaterialTypeTooltip({
+  active,
+  payload,
+  total,
+}: TooltipContentProps<ValueType, NameType> & { total: number }) {
+  const row = payload?.[0]?.payload as { material: string; family: string; grams: number } | undefined;
+  if (!active || !row) return null;
+  return (
+    <div className="rounded-lg border border-hairline bg-raised px-3 py-2 text-xs shadow-sm">
+      <div className="flex items-center gap-2">
+        <span className="inline-block h-0.5 w-3 rounded" style={{ background: FAMILY_COLOR[row.family] }} />
+        <span className="tabular font-semibold text-ink">{grams(row.grams)}</span>
+        <span className="text-ink-2">{row.material}</span>
+      </div>
+      {total > 0 && <div className="tabular mt-1 text-ink-2">{percent(row.grams / total)} of filament</div>}
+    </div>
   );
 }
 

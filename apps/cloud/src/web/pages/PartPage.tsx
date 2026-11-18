@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { api, invalidate, useMe, usePart, useParts } from "../api.ts";
+import { AutoLabelCard } from "../components/AutoLabels.tsx";
 import { PartImage } from "../components/PartImage.tsx";
 import { LabelCard } from "../components/Print.tsx";
 import {
@@ -182,6 +183,7 @@ export function PartPage() {
               </ul>
             )}
           </Card>
+          <AutoLabelCard partId={id} canEdit={canEdit} />
           {canEdit && <LabelCard source="part" id={id} />}
           {canEdit && (
             <EditPart
